@@ -13,6 +13,10 @@ pub enum ServerError {
     VarIntTooBig,
     #[error("Integer too big to be converted to a VarInt {0}")]
     IntTooBig(i32),
+    #[error("Size specified in packet is wrong. Got {got}, expected {expected}")]
+    WrongPacketSize{expected: usize, got: usize},
+    #[error("Invalid packet state: {0}")]
+    InvalidPacketState(i32),
     #[error("Reached end of packet data")]
     EndOfPacket,
 }

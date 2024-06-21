@@ -1,8 +1,9 @@
 use crate::datatypes::{MCString, VarInt};
-use crate::packet::{MCPacketType, PacketType};
+use crate::packet::MCPacketType;
+use crate::server_connection::ConnectionStatusType;
 
 pub struct PacketBuilder {
-    packet_type: Option<PacketType>,
+    packet_type: Option<ConnectionStatusType>,
     packet_id: Option<i32>,
     proto_packet: Vec<u8>,
 }
@@ -16,7 +17,7 @@ impl PacketBuilder {
         }
     }
 
-    pub fn set_state(mut self, packet_type: PacketType) -> Self {
+    pub fn set_state(mut self, packet_type: ConnectionStatusType) -> Self {
         self.packet_type = Some(packet_type);
         self
     }
