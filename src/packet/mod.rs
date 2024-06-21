@@ -1,10 +1,17 @@
 mod handshake;
 mod status;
+mod login;
+mod configure;
+mod play;
+
 use std::slice::Iter;
 use crate::error::ServerError;
 
 pub use status::StatusPacketType;
 pub use handshake::HandshakePacketType;
+pub use login::{LoginPacketType, LoginPacketResponse};
+pub use configure::{ConfigurationPacketType, ConfigurationPacketResponse};
+
 pub trait MCPacketType {
     fn id(self) -> i32;
 }
@@ -32,6 +39,10 @@ fn next_varint(data: &mut Iter<u8>) -> Result<i32, ServerError> {
     Ok(value)
 }
 
+fn next_u8(data: &mut Iter<u8>) -> Result<u8, ServerError> {
+    Ok(*data.next().ok_or(ServerError::EndOfPacket)?)
+}
+
 fn next_u16(data: &mut Iter<u8>) -> Result<u16, ServerError> {
     Ok(u16::from_be_bytes([*data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?]))
 }
@@ -40,4 +51,19 @@ fn next_string(data: &mut Iter<u8>) -> Result<String, ServerError> {
     let length = next_varint(data)?;
     let utf8 = data.take(length as usize).map(|n| *n).collect::<Vec<u8>>();
     Ok(String::from_utf8(utf8)?)
+}
+
+fn next_bool(data: &mut Iter<u8>) -> Result<bool, ServerError> {
+    Ok(*data.next().ok_or(ServerError::EndOfPacket)? != 0)
+}
+
+fn next_u128(data: &mut Iter<u8>) -> Result<u128, ServerError> {
+    Ok(u128::from_be_bytes(
+        [
+            *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?,
+            *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?,
+            *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?,
+            *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?,
+        ]
+    ))
 }

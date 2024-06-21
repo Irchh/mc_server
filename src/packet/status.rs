@@ -1,6 +1,7 @@
 use crate::error::ServerError;
 use crate::packet::*;
 
+#[derive(Debug)]
 pub enum StatusPacketType {
     // Serverbound
     Status,

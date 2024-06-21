@@ -1,6 +1,7 @@
 use crate::error::ServerError;
 use crate::packet::*;
 
+#[derive(Debug)]
 pub enum HandshakePacketType {
     // Serverbound
     Handshake {protocol: i32, server_addr: String, server_port: u16, next_state: i32},

@@ -1,7 +1,6 @@
 use std::net::TcpListener;
 use std::thread;
 use log::*;
-use rand::{distributions, Rng};
 use crate::server_connection::MCServerConnection;
 use crate::server_util::{DescriptionInfo, PlayerInfo, PlayerSample, ServerInfo, VersionInfo};
 
@@ -13,19 +12,19 @@ impl MCServer {
     pub fn new() -> Self {
         Self {
             server_info: ServerInfo {
-                description: DescriptionInfo { text: "RustMC 1.20.5-dev".to_string() },
+                description: DescriptionInfo { text: "RustMC 1.21-dev".to_string() },
                 players: PlayerInfo {
                     max: 100,
                     online: 1,
                     sample: vec![PlayerSample { name: "Irchh".to_string(), id: "00000000-0000-0000-0000-000000000000".to_string() }],
                 },
-                version: VersionInfo { name: "RustMC 1.20.5".to_string(), protocol: 766 },
+                version: VersionInfo { name: "RustMC 1.21".to_string(), protocol: 767 },
                 favicon: "data:image/png;base64,<data>".to_string(),
             },
         }
     }
 
-    pub fn run(mut self, listen: &str) {
+    pub fn run(self, listen: &str) {
         let listener = TcpListener::bind(listen).unwrap();
         info!("Listening on: {}", listen);
         let mut threads = vec![];
@@ -45,9 +44,5 @@ impl MCServer {
                 Err(err) => error!("Error accepting connection: {}", err),
             }
         }
-    }
-
-    pub fn handle_connection(&self) {
-
     }
 }

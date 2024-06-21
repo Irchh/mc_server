@@ -15,8 +15,8 @@ pub enum ServerError {
     IntTooBig(i32),
     #[error("Size specified in packet is wrong. Got {got}, expected {expected}")]
     WrongPacketSize{expected: usize, got: usize},
-    #[error("Invalid packet state: {0}")]
-    InvalidPacketState(i32),
+    #[error("Invalid server state: {0}")]
+    InvalidServerState(i32),
     #[error("Reached end of packet data")]
     EndOfPacket,
 }

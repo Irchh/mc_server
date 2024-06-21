@@ -12,7 +12,7 @@ use crate::server::MCServer;
 
 fn main() {
     if env::var("RUST_LOG").is_err() {
-        env::set_var("RUST_LOG", "debug")
+        env::set_var("RUST_LOG", "trace")
     }
     env_logger::init();
 
