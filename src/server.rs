@@ -1,11 +1,15 @@
+use std::io::ErrorKind;
 use std::net::TcpListener;
+use std::sync::mpsc::TryRecvError;
 use std::thread;
 use log::*;
+use crate::resource_manager::ResourceManager;
 use crate::server_connection::MCServerConnection;
-use crate::server_util::{DescriptionInfo, PlayerInfo, PlayerSample, ServerInfo, VersionInfo};
+use crate::server_util::{DescriptionInfo, PlayerInfo, PlayerSample, ServerConnectionThreadBound, ServerInfo, ServerMainThreadBound, VersionInfo};
 
 pub struct MCServer {
     server_info: ServerInfo,
+    resource_manager: ResourceManager,
 }
 
 impl MCServer {
@@ -21,12 +25,15 @@ impl MCServer {
                 version: VersionInfo { name: "RustMC 1.21".to_string(), protocol: 767 },
                 favicon: "data:image/png;base64,<data>".to_string(),
             },
+            resource_manager: ResourceManager::new("resources").unwrap(),
         }
     }
 
     pub fn run(self, listen: &str) {
         let listener = TcpListener::bind(listen).unwrap();
+        listener.set_nonblocking(true).unwrap();
         info!("Listening on: {}", listen);
+
         let mut threads = vec![];
         let mut channels = vec![];
         for stream in listener.incoming() {
@@ -41,7 +48,42 @@ impl MCServer {
                     }));
                     channels.push((ch_to_thread.0, ch_from_thread.1));
                 }
-                Err(err) => error!("Error accepting connection: {}", err),
+                Err(err) => {
+                    if err.kind() != ErrorKind::WouldBlock {
+                        error!("Error accepting connection: {}", err)
+                    }
+                },
+            }
+            // Drop any threads and channels that are finished
+            for i in (0..threads.len()).rev() {
+                if threads[i].is_finished() {
+                    let thread = threads.remove(i);
+                    let _channel = channels.remove(i);
+                    if let Err(err) = thread.join() {
+                        error!("Thread panicked: {}", err.downcast::<std::io::Error>().map(|e| e.to_string()).unwrap_or("Unknown reason".to_string()));
+                    }
+                }
+            }
+            // Handle all channel messages both ways
+            // TODO: Add a message queue
+            for i in 0..channels.len() {
+                let (send, rec) = &channels[i];
+                match rec.try_recv() {
+                    Ok(request) => {
+                        match request {
+                            ServerMainThreadBound::RequestRegistryInfo => {
+                                for (id, entries) in self.resource_manager.registries_ref() {
+                                    send.send(ServerConnectionThreadBound::RegistryInfo {
+                                        registry_id: id.clone(),
+                                        entries: entries.clone(),
+                                    }).unwrap();
+                                }
+                                send.send(ServerConnectionThreadBound::RegistryInfoFinished).unwrap();
+                            }
+                        }
+                    }
+                    Err(_) => {}
+                }
             }
         }
     }

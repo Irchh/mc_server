@@ -5,6 +5,7 @@ mod error;
 mod server_util;
 mod server;
 mod server_connection;
+mod resource_manager;
 
 use std::env;
 use crate::server::MCServer;

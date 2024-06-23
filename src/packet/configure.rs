@@ -2,6 +2,7 @@ use log::error;
 use crate::error::ServerError;
 use crate::packet::*;
 use crate::packet_builder::PacketBuilder;
+use crate::server_util::RegistryEntry;
 
 #[derive(Debug)]
 pub struct KnownPack {
@@ -43,12 +44,22 @@ impl MCPacketType for ConfigurationPacketResponse {
 }
 
 impl ConfigurationPacketResponse {
-    pub fn registry_data() -> Vec<u8> {
-        let packet = PacketBuilder::new()
+    pub fn registry_data(registry_id: String, entries: Vec<RegistryEntry>) -> Vec<u8> {
+        let mut packet = PacketBuilder::new()
             .set_id(Self::RegistryData)
-            .build()
-            .unwrap();
-        packet
+            .add_string(registry_id)
+            .add_varint(entries.len() as i32);
+
+        for entry in entries {
+            packet = packet.add_string(entry.id)
+                //.add_bool(entry.data.is_some());
+                .add_bool(false);
+            if entry.data.is_some() {
+                //packet = packet.add_nbt(entry.data.unwrap();
+            }
+        }
+
+        packet.build().unwrap()
     }
 }
 

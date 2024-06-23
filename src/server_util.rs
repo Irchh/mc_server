@@ -1,3 +1,4 @@
+use inbt::NbtTag;
 use serde::Serialize;
 
 #[derive(Serialize, Clone)]
@@ -28,10 +29,17 @@ pub struct ServerInfo {
     pub favicon: String
 }
 
-pub enum ServerMainThreadBound {
+#[derive(Debug, Clone)]
+pub struct RegistryEntry {
+    pub id: String,
+    pub data: Option<NbtTag>,
+}
 
+pub enum ServerMainThreadBound {
+    RequestRegistryInfo
 }
 
 pub enum ServerConnectionThreadBound {
-
+    RegistryInfo { registry_id: String, entries: Vec<RegistryEntry> },
+    RegistryInfoFinished,
 }

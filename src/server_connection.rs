@@ -1,6 +1,6 @@
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::net::{Shutdown, TcpStream};
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, TryRecvError};
 use log::*;
 use crate::datatypes::{MCString, VarInt};
 use crate::error::ServerError;
@@ -86,15 +86,30 @@ impl MCServerConnection {
                     }
                 }
                 Err(err) => {
-                    match err.kind() {
-                        std::io::ErrorKind::WouldBlock => {}
-                        _ => {
-                            error!("Error receiving data from {}: {}", self.connection.peer_addr().map(|s| s.to_string()).unwrap_or("Unknown".to_string()), err);
-                            self.connection.shutdown(Shutdown::Both).unwrap();
-                            break 'outer;
+                    if err.kind() != ErrorKind::WouldBlock {
+                        error!("Error receiving data from {}: {}", self.connection.peer_addr().map(|s| s.to_string()).unwrap_or("Unknown".to_string()), err);
+                        self.connection.shutdown(Shutdown::Both).unwrap();
+                        break 'outer;
+                    }
+                }
+            }
+            match self.receiver.try_recv() {
+                Ok(message) => {
+                    match message {
+                        ServerConnectionThreadBound::RegistryInfo { registry_id, entries } => {
+                            self.send_packet(ConfigurationPacketResponse::registry_data(registry_id, entries));
+                        }
+                        ServerConnectionThreadBound::RegistryInfoFinished => {
+                            // Next stage ig
+                            let packet = PacketBuilder::new()
+                                .set_id(ConfigurationPacketResponse::FinishConfiguration)
+                                .build()
+                                .unwrap();
+                            self.send_packet(packet);
                         }
                     }
                 }
+                Err(_) => {}
             }
         }
     }
@@ -216,7 +231,6 @@ impl MCServerConnection {
                 Ok(())
             }
             ConfigurationPacketType::ClientInformation { .. } => {
-
                 let packet = PacketBuilder::new()
                     .set_id(ConfigurationPacketResponse::ClientBoundKnownPacks)
                     .add_varint(1)
@@ -242,12 +256,7 @@ impl MCServerConnection {
                 } else {
                     panic!("Client known packs empty");
                 }
-
-                let packet = PacketBuilder::new()
-                    .set_id(ConfigurationPacketResponse::FinishConfiguration)
-                    .build()
-                    .unwrap();
-                self.send_packet(packet);
+                self.sender.send(ServerMainThreadBound::RequestRegistryInfo).unwrap();
                 Ok(())
             }
         }

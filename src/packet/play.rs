@@ -1,6 +1,7 @@
 use crate::error::ServerError;
 use crate::packet::*;
 use crate::packet_builder::PacketBuilder;
+use crate::server_util::RegistryEntry;
 
 #[derive(Debug)]
 pub enum PlayPacketServerBound {
