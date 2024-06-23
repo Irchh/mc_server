@@ -3,6 +3,7 @@ use std::net::TcpListener;
 use std::sync::mpsc::TryRecvError;
 use std::thread;
 use log::*;
+use mc_world_parser::World;
 use crate::resource_manager::ResourceManager;
 use crate::server_connection::MCServerConnection;
 use crate::server_util::{DescriptionInfo, PlayerInfo, PlayerSample, ServerConnectionThreadBound, ServerInfo, ServerMainThreadBound, VersionInfo};
@@ -10,6 +11,7 @@ use crate::server_util::{DescriptionInfo, PlayerInfo, PlayerSample, ServerConnec
 pub struct MCServer {
     server_info: ServerInfo,
     resource_manager: ResourceManager,
+    world: World
 }
 
 impl MCServer {
@@ -26,6 +28,7 @@ impl MCServer {
                 favicon: "data:image/png;base64,<data>".to_string(),
             },
             resource_manager: ResourceManager::new("resources").unwrap(),
+            world: World::load("world").unwrap(),
         }
     }
 
