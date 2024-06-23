@@ -48,6 +48,17 @@ fn next_u16(data: &mut Iter<u8>) -> Result<u16, ServerError> {
     Ok(u16::from_be_bytes([*data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?]))
 }
 
+fn next_f32(data: &mut Iter<u8>) -> Result<f32, ServerError> {
+    Ok(f32::from_be_bytes([*data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?]))
+}
+
+fn next_f64(data: &mut Iter<u8>) -> Result<f64, ServerError> {
+    Ok(f64::from_be_bytes([
+        *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?,
+        *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?
+    ]))
+}
+
 fn next_string(data: &mut Iter<u8>) -> Result<String, ServerError> {
     let length = next_varint(data)?;
     let utf8 = data.take(length as usize).map(|n| *n).collect::<Vec<u8>>();

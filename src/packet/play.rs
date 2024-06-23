@@ -1,10 +1,11 @@
 use crate::error::ServerError;
 use crate::packet::*;
 use crate::packet_builder::PacketBuilder;
-use crate::server_util::RegistryEntry;
 
 #[derive(Debug)]
 pub enum PlayPacketServerBound {
+    SetPlayerPosition { x: f64, y: f64, z: f64, on_ground: bool },
+    SetPlayerPositionAndRotation { x: f64, y: f64, z: f64, yaw: f32, pitch: f32, on_ground: bool },
 }
 
 #[repr(i32)]
@@ -64,7 +65,25 @@ impl PlayPacketServerBound {
         }
         let id = next_varint(&mut iterator)?;
         match id {
-            _ => unimplemented!("Invalid configuration packet id: {}", id)
+            0x1A => {
+                Ok(Self::SetPlayerPosition {
+                    x: next_f64(&mut iterator)?,
+                    y: next_f64(&mut iterator)?,
+                    z: next_f64(&mut iterator)?,
+                    on_ground: next_bool(&mut iterator)?,
+                })
+            }
+            0x1B => {
+                Ok(Self::SetPlayerPositionAndRotation {
+                    x: next_f64(&mut iterator)?,
+                    y: next_f64(&mut iterator)?,
+                    z: next_f64(&mut iterator)?,
+                    yaw: next_f32(&mut iterator)?,
+                    pitch: next_f32(&mut iterator)?,
+                    on_ground: next_bool(&mut iterator)?,
+                })
+            }
+            _ => unimplemented!("Invalid configuration packet id: {:02X}", id)
         }
     }
 }

@@ -266,7 +266,12 @@ impl MCServerConnection {
         let packet = PlayPacketServerBound::parse(data)?;
         debug!("Parsed play packet: {:?}", packet);
         match packet {
-
+            PlayPacketServerBound::SetPlayerPosition { x, y, z, on_ground } => {
+                trace!("pos: {x} / {y} / {z}, on_ground: {on_ground}")
+            }
+            PlayPacketServerBound::SetPlayerPositionAndRotation { x, y, z, yaw, pitch, on_ground } => {
+                trace!("pos: {x} / {y} / {z}, yaw: {yaw}, pitch: {pitch}, on_ground: {on_ground}")
+            }
         }
         Ok(())
     }
