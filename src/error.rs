@@ -1,5 +1,6 @@
 use std::string::FromUtf8Error;
 use thiserror::Error;
+use crate::server_connection::ConnectionStatusType;
 
 #[derive(Error, Debug)]
 pub enum ServerError {
@@ -17,6 +18,8 @@ pub enum ServerError {
     WrongPacketSize{expected: usize, got: usize},
     #[error("Invalid server state: {0}")]
     InvalidServerState(i32),
+    #[error("Server state not yet implemented: {0:?}")]
+    ServerStateNotImplemented(ConnectionStatusType),
     #[error("Reached end of packet data")]
     EndOfPacket,
 }

@@ -11,6 +11,7 @@ pub use status::StatusPacketType;
 pub use handshake::HandshakePacketType;
 pub use login::{LoginPacketType, LoginPacketResponse};
 pub use configure::{ConfigurationPacketType, ConfigurationPacketResponse};
+pub use play::{PlayPacketServerBound, PlayPacketClientBound};
 
 pub trait MCPacketType {
     fn id(self) -> i32;

@@ -1,5 +1,14 @@
+use log::error;
 use crate::error::ServerError;
 use crate::packet::*;
+use crate::packet_builder::PacketBuilder;
+
+#[derive(Debug)]
+pub struct KnownPack {
+    pub namespace: String,
+    pub id: String,
+    pub version: String,
+}
 
 #[derive(Debug)]
 pub enum ConfigurationPacketType {
@@ -15,6 +24,7 @@ pub enum ConfigurationPacketType {
     },
     ServerBoundPluginMessage { channel: String, data: Vec<u8> },
     FinishConfigurationAck,
+    ServerBoundKnownPacks { known_packs: Vec<KnownPack> },
 }
 
 #[repr(i32)]
@@ -22,6 +32,8 @@ pub enum ConfigurationPacketResponse {
     ClientBoundPluginMessage = 0x01,
     Disconnect = 0x02,
     FinishConfiguration = 0x03,
+    RegistryData = 0x07,
+    ClientBoundKnownPacks = 0x0E,
 }
 
 impl MCPacketType for ConfigurationPacketResponse {
@@ -30,12 +42,23 @@ impl MCPacketType for ConfigurationPacketResponse {
     }
 }
 
+impl ConfigurationPacketResponse {
+    pub fn registry_data() -> Vec<u8> {
+        let packet = PacketBuilder::new()
+            .set_id(Self::RegistryData)
+            .build()
+            .unwrap();
+        packet
+    }
+}
+
 impl ConfigurationPacketType {
     pub fn parse(bytes: Vec<u8>) -> Result<Self, ServerError> {
         let mut iterator = bytes.iter();
         let length = next_varint(&mut iterator)? as usize;
         if iterator.len() != length {
-            return Err(ServerError::WrongPacketSize{expected: iterator.len(), got: length});
+            error!("Real size: {}, Reported size: {}", iterator.len(), length);
+            return Err(ServerError::WrongPacketSize {expected: length, got: iterator.len()});
         }
         let id = next_varint(&mut iterator)?;
         match id {
@@ -59,6 +82,19 @@ impl ConfigurationPacketType {
             }
             0x03 => {
                 Ok(Self::FinishConfigurationAck)
+            }
+            0x07 => {
+                let known_pack_count = next_varint(&mut iterator)?;
+                let mut known_packs = vec![];
+                for _ in 0..known_pack_count {
+                    known_packs.push(KnownPack {
+                            namespace: next_string(&mut iterator)?,
+                            id: next_string(&mut iterator)?,
+                            version: next_string(&mut iterator)?,
+                        }
+                    );
+                }
+                Ok(Self::ServerBoundKnownPacks { known_packs })
             }
             _ => unimplemented!("Invalid configuration packet id: {}", id)
         }

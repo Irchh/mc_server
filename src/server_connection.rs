@@ -2,9 +2,9 @@ use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::sync::mpsc::{Receiver, Sender};
 use log::*;
-use crate::datatypes::MCString;
+use crate::datatypes::{MCString, VarInt};
 use crate::error::ServerError;
-use crate::packet::{ConfigurationPacketResponse, ConfigurationPacketType, HandshakePacketType, LoginPacketResponse, LoginPacketType, StatusPacketType};
+use crate::packet::{ConfigurationPacketResponse, ConfigurationPacketType, HandshakePacketType, LoginPacketResponse, LoginPacketType, PlayPacketClientBound, PlayPacketServerBound, StatusPacketType};
 use crate::packet_builder::PacketBuilder;
 use crate::server_util::{ServerInfo, ServerConnectionThreadBound, ServerMainThreadBound};
 
@@ -25,6 +25,7 @@ pub struct MCServerConnection {
     sender: Sender<ServerMainThreadBound>,
     receiver: Receiver<ServerConnectionThreadBound>,
     server_info: ServerInfo,
+    packet_buffer: Vec<u8>,
 }
 
 impl MCServerConnection {
@@ -37,6 +38,7 @@ impl MCServerConnection {
             sender,
             receiver,
             server_info,
+            packet_buffer: vec![],
         }
     }
 
@@ -45,8 +47,23 @@ impl MCServerConnection {
         self.connection.write(packet.as_slice()).unwrap();
     }
 
+    fn sync_player_pos(&mut self) {
+        let packet = PacketBuilder::new()
+            .set_id(PlayPacketClientBound::SyncPlayerPosition)
+            .add_double(0f64)
+            .add_double(0f64)
+            .add_double(0f64)
+            .add_float(0f32)
+            .add_float(0f32)
+            .add_byte(0x1F)
+            .add_varint(0)
+            .build()
+            .unwrap();
+        self.send_packet(packet);
+    }
+
     pub fn run(mut self) {
-        let mut raw_data = [0; 32767]; // Max client to server packet size;
+        let mut raw_data = [0; 32768]; // Max client to server packet size;
         'outer: loop {
             match self.connection.read(&mut raw_data) {
                 Ok(size) => {
@@ -55,26 +72,17 @@ impl MCServerConnection {
                         info!("{}: Ending connection", self.pretty_identifier);
                         break 'outer;
                     }
-                    let data = raw_data[0..size].to_vec();
-                    match self.state {
-                        ConnectionStatusType::Handshake => {
-                            if let Err(err) = self.handle_handshake_packet(data) {
-                                error!("Invalid handshake packet next_state: {}", err);
+                    self.packet_buffer.append(&mut raw_data[0..size].to_vec());
+                    loop {
+                        // Cloning here is inefficient but heck
+                        if let Ok(packet_size) = VarInt::from(self.packet_buffer.clone()) {
+                            if self.packet_buffer.len() >= packet_size.value as usize {
+                                let packet = self.packet_buffer.drain(0..(packet_size.value as usize + packet_size.bytes.len())).collect();
+                                self.handle_packet(packet).unwrap();
+                                continue;
                             }
                         }
-                        ConnectionStatusType::Status => {
-                            self.handle_status_packet(data).unwrap();
-                        }
-                        ConnectionStatusType::Login => {
-                            self.handle_login_packet(data).unwrap();
-                        }
-                        ConnectionStatusType::Configuration => {
-                            self.handle_config_packet(data).unwrap();
-                        }
-                        _ => {
-                            error!("Server state not yet implemented: {:?}", self.state);
-                            break 'outer;
-                        }
+                        break;
                     }
                 }
                 Err(err) => {
@@ -89,6 +97,34 @@ impl MCServerConnection {
                 }
             }
         }
+    }
+
+    fn handle_packet(&mut self, packet: Vec<u8>) -> Result<(), ServerError> {
+        match self.state {
+            ConnectionStatusType::Handshake => {
+                if let Err(err) = self.handle_handshake_packet(packet) {
+                    error!("Invalid handshake packet next_state: {}", err);
+                    return Err(err);
+                }
+            }
+            ConnectionStatusType::Status => {
+                self.handle_status_packet(packet).unwrap();
+            }
+            ConnectionStatusType::Login => {
+                self.handle_login_packet(packet).unwrap();
+            }
+            ConnectionStatusType::Configuration => {
+                self.handle_config_packet(packet).unwrap();
+            }
+            ConnectionStatusType::Play => {
+                self.handle_play_packet(packet).unwrap();
+            }
+            _ => {
+                error!("Server state not yet implemented: {:?}", self.state);
+                return Err(ServerError::ServerStateNotImplemented(self.state.clone()));
+            }
+        }
+        Ok(())
     }
 
     fn handle_handshake_packet(&mut self, data: Vec<u8>) -> Result<(), ServerError> {
@@ -180,8 +216,13 @@ impl MCServerConnection {
                 Ok(())
             }
             ConfigurationPacketType::ClientInformation { .. } => {
+
                 let packet = PacketBuilder::new()
-                    .set_id(ConfigurationPacketResponse::FinishConfiguration)
+                    .set_id(ConfigurationPacketResponse::ClientBoundKnownPacks)
+                    .add_varint(1)
+                    .add_string("minecraft")
+                    .add_string("core")
+                    .add_string("1.21")
                     .build()
                     .unwrap();
                 self.send_packet(packet);
@@ -189,8 +230,35 @@ impl MCServerConnection {
             }
             ConfigurationPacketType::FinishConfigurationAck => {
                 self.state = ConnectionStatusType::Play;
+                debug!("Going into Play state");
+                self.send_packet(PlayPacketClientBound::login(1, false, vec!["minecraft:overworld".to_string(), "minecraft:the_end".to_string(), "minecraft:the_nether".to_string()], 20, 10));
+                Ok(())
+            }
+            ConfigurationPacketType::ServerBoundKnownPacks { known_packs } => {
+                if let Some(pack) = known_packs.first() {
+                    if !(pack.namespace == "minecraft" && pack.id == "core" && pack.version == "1.21") {
+                        panic!("Server and client known pack mismatch");
+                    }
+                } else {
+                    panic!("Client known packs empty");
+                }
+
+                let packet = PacketBuilder::new()
+                    .set_id(ConfigurationPacketResponse::FinishConfiguration)
+                    .build()
+                    .unwrap();
+                self.send_packet(packet);
                 Ok(())
             }
         }
+    }
+
+    fn handle_play_packet(&mut self, data: Vec<u8>) -> Result<(), ServerError> {
+        let packet = PlayPacketServerBound::parse(data)?;
+        debug!("Parsed play packet: {:?}", packet);
+        match packet {
+
+        }
+        Ok(())
     }
 }

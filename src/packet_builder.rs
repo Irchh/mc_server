@@ -20,6 +20,31 @@ impl PacketBuilder {
         self
     }
 
+    pub fn add_byte(mut self, value: u8) -> Self {
+        self.proto_packet.push(value);
+        self
+    }
+
+    pub fn add_long(mut self, value: u64) -> Self {
+        self.proto_packet.append(&mut value.to_be_bytes().to_vec());
+        self
+    }
+
+    pub fn add_int(mut self, value: i32) -> Self {
+        self.proto_packet.append(&mut value.to_be_bytes().to_vec());
+        self
+    }
+
+    pub fn add_float(mut self, value: f32) -> Self {
+        self.proto_packet.append(&mut value.to_be_bytes().to_vec());
+        self
+    }
+
+    pub fn add_double(mut self, value: f64) -> Self {
+        self.proto_packet.append(&mut value.to_be_bytes().to_vec());
+        self
+    }
+
     pub fn add_string<S: Into<String>>(mut self, string: S) -> Self {
         self.proto_packet.append(&mut MCString::new(string.into()).unwrap().bytes);
         self
