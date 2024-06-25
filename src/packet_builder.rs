@@ -1,5 +1,5 @@
 use uuid::Uuid;
-use crate::datatypes::{MCString, VarInt};
+use mc_datatypes::{MCString, VarInt};
 use crate::packet::MCPacketType;
 
 pub struct PacketBuilder {
@@ -25,13 +25,23 @@ impl PacketBuilder {
         self
     }
 
-    pub fn add_long(mut self, value: u64) -> Self {
+    pub fn add_short(mut self, value: i16) -> Self {
         self.proto_packet.append(&mut value.to_be_bytes().to_vec());
         self
     }
 
     pub fn add_int(mut self, value: i32) -> Self {
         self.proto_packet.append(&mut value.to_be_bytes().to_vec());
+        self
+    }
+
+    pub fn add_long(mut self, value: u64) -> Self {
+        self.proto_packet.append(&mut value.to_be_bytes().to_vec());
+        self
+    }
+
+    pub fn add_bytes(mut self, mut value: Vec<u8>) -> Self {
+        self.proto_packet.append(&mut value);
         self
     }
 

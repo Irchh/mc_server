@@ -1,14 +1,19 @@
+use std::cmp::PartialEq;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::sync::mpsc::{Receiver, Sender, TryRecvError};
+use std::thread::sleep;
+use std::time::{Duration, SystemTime};
 use log::*;
-use crate::datatypes::{MCString, VarInt};
+use mc_world_parser::Position;
+use rand::random;
+use mc_datatypes::{MCString, VarInt};
 use crate::error::ServerError;
 use crate::packet::{ConfigurationPacketResponse, ConfigurationPacketType, HandshakePacketType, LoginPacketResponse, LoginPacketType, PlayPacketClientBound, PlayPacketServerBound, StatusPacketType};
 use crate::packet_builder::PacketBuilder;
 use crate::server_util::{ServerInfo, ServerConnectionThreadBound, ServerMainThreadBound};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionStatusType {
     Handshake,
     Status,
@@ -16,6 +21,46 @@ pub enum ConnectionStatusType {
     Transfer, // what does this do?
     Configuration,
     Play,
+}
+
+pub struct Player {
+    eid: i32,
+    x: f64,
+    y: f64,
+    z: f64,
+    yaw: f32,
+    pitch: f32,
+    on_ground: bool,
+    confirm_tp_count: u32,
+}
+
+impl Player {
+    pub fn new(eid: i32) -> Self {
+        Self {
+            eid,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            yaw: 0.0,
+            pitch: 0.0,
+            on_ground: false,
+            confirm_tp_count: 0,
+        }
+    }
+    pub fn set_pos(&mut self, x: f64, y: f64, z: f64) {
+        self.x = x;
+        self.y = y.max(85f64);
+        self.z = z;
+    }
+
+    pub fn set_yaw_pitch(&mut self, yaw: f32, pitch: f32) {
+        self.yaw = yaw;
+        self.pitch = pitch;
+    }
+
+    pub fn set_on_ground(&mut self, on_ground: bool) {
+        self.on_ground = on_ground;
+    }
 }
 
 pub struct MCServerConnection {
@@ -26,6 +71,10 @@ pub struct MCServerConnection {
     receiver: Receiver<ServerConnectionThreadBound>,
     server_info: ServerInfo,
     packet_buffer: Vec<u8>,
+    client_loaded_chunks: Vec<Position>,
+    player: Player,
+    last_tick: SystemTime,
+    waiting_for_confirm_teleport: Option<i32>,
 }
 
 impl MCServerConnection {
@@ -39,6 +88,10 @@ impl MCServerConnection {
             receiver,
             server_info,
             packet_buffer: vec![],
+            client_loaded_chunks: vec![],
+            player: Player::new(random()),
+            last_tick: SystemTime::UNIX_EPOCH,
+            waiting_for_confirm_teleport: None,
         }
     }
 
@@ -88,7 +141,7 @@ impl MCServerConnection {
                 Err(err) => {
                     if err.kind() != ErrorKind::WouldBlock {
                         error!("Error receiving data from {}: {}", self.connection.peer_addr().map(|s| s.to_string()).unwrap_or("Unknown".to_string()), err);
-                        self.connection.shutdown(Shutdown::Both).unwrap();
+                        let _= self.connection.shutdown(Shutdown::Both);
                         break 'outer;
                     }
                 }
@@ -107,11 +160,97 @@ impl MCServerConnection {
                                 .unwrap();
                             self.send_packet(packet);
                         }
+                        ServerConnectionThreadBound::ChunkData(chunk) => {
+                            if let Some(chunk) = chunk {
+                                self.send_packet(PlayPacketClientBound::chunk_data(chunk));
+                            }
+                        }
+                        ServerConnectionThreadBound::ChatMessage { player_name, message, timestamp, salt } => {
+                            self.send_packet(PlayPacketClientBound::player_chat_message_fake(player_name, message));
+                        }
                     }
                 }
                 Err(_) => {}
             }
+
+            if self.state == ConnectionStatusType::Play {
+                self.handle_chunk_loading();
+                self.handle_ticks();
+            }
         }
+    }
+
+    fn handle_chunk_loading(&mut self) {
+        // TODO: Handle position ig
+        let chunk_to_load = vec![Position::new(0, 0, 0), Position::new(-1, 0, 0), Position::new(0, 0, -1), Position::new(-1, 0, -1)];
+        for chunk in chunk_to_load {
+            if !self.client_loaded_chunks.contains(&chunk) {
+                self.client_loaded_chunks.push(chunk);
+                self.sender.send(ServerMainThreadBound::RequestChunk(chunk)).unwrap();
+            }
+        }
+    }
+
+    fn handle_ticks(&mut self) {
+        if self.last_tick == SystemTime::UNIX_EPOCH {
+            // Send ticking state
+            let packet = PacketBuilder::new()
+                .set_id(PlayPacketClientBound::SetTickingState)
+                .add_float(20f32)
+                .add_bool(false)
+                .build().unwrap();
+            self.send_packet(packet);
+            // Send first tick
+            self.last_tick = SystemTime::now();
+            let packet = PacketBuilder::new()
+                .set_id(PlayPacketClientBound::StepTick)
+                .add_varint(1)
+                .build().unwrap();
+            self.send_packet(packet);
+        } else {
+            let curr_time = SystemTime::now();
+            if let Ok(duration) = curr_time.duration_since(self.last_tick) {
+                if duration.as_secs_f64() > 1.0/20.0 {
+                    let packet = PacketBuilder::new()
+                        .set_id(PlayPacketClientBound::StepTick)
+                        .add_varint(1)
+                        .build().unwrap();
+                    self.send_packet(packet);
+                    self.last_tick = curr_time;
+                }
+            } else {
+                self.last_tick = curr_time;
+            }
+        }
+    }
+
+    fn confirm_teleport(&mut self) {
+        // Send sync player pos
+        let confirm_id = self.player.confirm_tp_count;
+        self.player.confirm_tp_count += 1;
+        //sleep(Duration::from_secs_f64(0.1));
+        let packet = PacketBuilder::new()
+            .set_id(PlayPacketClientBound::SyncPlayerPosition)
+            .add_double(0f64)
+            .add_double(0f64)
+            .add_double(0f64)
+            .add_float(0f32)
+            .add_float(0f32)
+            .add_byte(0x1F)
+            .add_varint(confirm_id as i32)
+            ;
+        self.waiting_for_confirm_teleport = Some(confirm_id as i32);
+        self.send_packet(packet.build().unwrap())
+    }
+
+    fn play_mode_initialize_client(&mut self) {
+        // Sends all required packets for clients to connect that don't get sent on different signals
+        self.send_packet(PlayPacketClientBound::login(self.player.eid, false, vec!["minecraft:overworld".to_string(), "minecraft:the_end".to_string(), "minecraft:the_nether".to_string()], 20, 10));
+        self.send_packet(PlayPacketClientBound::change_difficulty(1));
+        self.send_packet(PlayPacketClientBound::player_abilities());
+        self.send_packet(PlayPacketClientBound::set_held_item(0));
+        //self.send_packet(PlayPacketClientBound::set_recipes());
+        self.send_packet(PlayPacketClientBound::entity_event(self.player.eid, 24));
     }
 
     fn handle_packet(&mut self, packet: Vec<u8>) -> Result<(), ServerError> {
@@ -245,7 +384,7 @@ impl MCServerConnection {
             ConfigurationPacketType::FinishConfigurationAck => {
                 self.state = ConnectionStatusType::Play;
                 debug!("Going into Play state");
-                self.send_packet(PlayPacketClientBound::login(1, false, vec!["minecraft:overworld".to_string(), "minecraft:the_end".to_string(), "minecraft:the_nether".to_string()], 20, 10));
+                self.play_mode_initialize_client();
                 Ok(())
             }
             ConfigurationPacketType::ServerBoundKnownPacks { known_packs } => {
@@ -264,14 +403,57 @@ impl MCServerConnection {
 
     fn handle_play_packet(&mut self, data: Vec<u8>) -> Result<(), ServerError> {
         let packet = PlayPacketServerBound::parse(data)?;
-        debug!("Parsed play packet: {:?}", packet);
+        trace!("Parsed play packet: {:?}", packet);
         match packet {
+            PlayPacketServerBound::ConfirmTeleportation { id } => {
+                if self.waiting_for_confirm_teleport == Some(id) {
+                    self.waiting_for_confirm_teleport = None;
+                }
+            }
+            PlayPacketServerBound::ClientInformation { .. } => {}
+            PlayPacketServerBound::ChatMessage { message, timestamp, salt, .. } => {
+                info!("[CHAT] <{}>: {}", self.pretty_identifier, message);
+                let _= self.sender.send(ServerMainThreadBound::ChatMessage { player_name: self.pretty_identifier.clone(), message, timestamp, salt });
+            }
+            PlayPacketServerBound::CloseContainer( .. ) => {}
+            PlayPacketServerBound::DebugSampleSubscription{ .. } => {}
             PlayPacketServerBound::SetPlayerPosition { x, y, z, on_ground } => {
+                self.player.set_pos(x, y, z);
+                self.player.set_on_ground(on_ground);
+                if self.waiting_for_confirm_teleport.is_none() {
+                    self.confirm_teleport();
+                }
                 trace!("pos: {x} / {y} / {z}, on_ground: {on_ground}")
             }
             PlayPacketServerBound::SetPlayerPositionAndRotation { x, y, z, yaw, pitch, on_ground } => {
+                self.player.set_pos(x, y, z);
+                self.player.set_yaw_pitch(yaw, pitch);
+                self.player.set_on_ground(on_ground);
+                if self.waiting_for_confirm_teleport.is_none() {
+                    self.confirm_teleport();
+                }
                 trace!("pos: {x} / {y} / {z}, yaw: {yaw}, pitch: {pitch}, on_ground: {on_ground}")
             }
+            PlayPacketServerBound::SetPlayerRotation { yaw, pitch, on_ground } => {
+                self.player.set_yaw_pitch(yaw, pitch);
+                self.player.set_on_ground(on_ground);
+            }
+            PlayPacketServerBound::SetPlayerOnGround(on_ground) => {
+                self.player.set_on_ground(on_ground);
+            }
+            PlayPacketServerBound::PingRequest(ping_id) => {
+                let packet = PacketBuilder::new()
+                    .set_id(PlayPacketClientBound::PingResponse)
+                    .add_long(ping_id)
+                    .build().unwrap();
+                self.send_packet(packet);
+            }
+            PlayPacketServerBound::PlayerAbilities { .. } => {}
+            PlayPacketServerBound::PlayerAction { .. } => {}
+            PlayPacketServerBound::PlayerCommand { .. } => {}
+            PlayPacketServerBound::SetHeldItem { .. } => {}
+            PlayPacketServerBound::SwingArm { .. } => {}
+            PlayPacketServerBound::UseItemOn { .. } => {}
         }
         Ok(())
     }

@@ -1,6 +1,5 @@
 mod packet;
 mod packet_builder;
-mod datatypes;
 mod error;
 mod server_util;
 mod server;
@@ -13,7 +12,7 @@ use crate::server::MCServer;
 
 fn main() {
     if env::var("RUST_LOG").is_err() {
-        env::set_var("RUST_LOG", "trace")
+        env::set_var("RUST_LOG", "debug")
     }
     env_logger::init();
 

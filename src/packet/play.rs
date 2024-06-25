@@ -1,18 +1,44 @@
+use mc_world_parser::chunk::Chunk;
+use uuid::Uuid;
 use crate::error::ServerError;
 use crate::packet::*;
 use crate::packet_builder::PacketBuilder;
 
 #[derive(Debug)]
 pub enum PlayPacketServerBound {
+    ConfirmTeleportation { id: i32 },
+    ChatMessage { message: String, timestamp: i64, salt: i64, signature: Option<Vec<u8>>, message_count: i32, acknowledged: Vec<u8> },
+    CloseContainer(u8),
+    ClientInformation { locale: String, view_distance: i8, chat_mode: i32, chat_has_colors: bool, /** This is a bit mask */ displayed_skin_parts: u8, main_hand: i32, enable_text_filtering: bool, allow_server_listings: bool,  },
+    DebugSampleSubscription { sample_type: i32 },
     SetPlayerPosition { x: f64, y: f64, z: f64, on_ground: bool },
     SetPlayerPositionAndRotation { x: f64, y: f64, z: f64, yaw: f32, pitch: f32, on_ground: bool },
+    SetPlayerRotation{ yaw: f32, pitch: f32, on_ground: bool },
+    SetPlayerOnGround(bool),
+    PingRequest(u64),
+    PlayerAbilities(u8),
+    PlayerAction { status: i32, packed_location: u64, face: u8, sequence: i32 },
+    PlayerCommand { eid: i32, id: i32, jump_boost: i32 },
+    SetHeldItem(u16),
+    SwingArm{ off_hand: bool },
+    UseItemOn { off_hand: bool, packed_location: u64, face: i32, cursor_x: f32, cursor_y: f32, cursor_z: f32, inside_block: bool, sequence: i32 },
 }
 
 #[repr(i32)]
 pub enum PlayPacketClientBound {
     AcknowledgeBlockChange = 0x05,
+    ChangeDifficulty = 0x0B,
+    DisguisedChatMessage = 0x1E,
+    EntityEvent = 0x1F,
+    ChunkDataAndUpdateLight = 0x27,
+    PingResponse = 0x36,
+    PlayerAbilities = 0x38,
+    PlayerChatMessage = 0x39,
     Login = 0x2B,
     SyncPlayerPosition = 0x40,
+    SetHeldItem = 0x53,
+    SetTickingState = 0x71,
+    StepTick = 0x72,
 }
 
 impl PlayPacketClientBound {
@@ -48,6 +74,113 @@ impl PlayPacketClientBound {
 
         return packet.build().unwrap();
     }
+
+    pub fn change_difficulty(difficulty: u8) -> Vec<u8> {
+        PacketBuilder::new()
+            .set_id(Self::ChangeDifficulty)
+            .add_byte(difficulty)
+            .add_bool(false)
+            .build().unwrap()
+    }
+
+    pub fn player_abilities() -> Vec<u8> {
+        PacketBuilder::new()
+            .set_id(Self::PlayerAbilities)
+            .add_byte(0x0D)
+            .add_float(0.05)
+            .add_float(0.1)
+            .build().unwrap()
+    }
+
+    pub fn player_chat_message_fake(player_name: String, msg: String) -> Vec<u8> {
+        let packet = PacketBuilder::new()
+            .set_id(Self::DisguisedChatMessage)
+
+            .add_byte(0x8) // String NBT Tag
+            .add_short(msg.clone().into_bytes().len() as i16)
+            .add_bytes(msg.into_bytes())
+
+            .add_varint(1) // Chat type index into registry (i REALLY need to implement registries lol)
+
+            .add_byte(0x8) // String NBT Tag
+            .add_short(player_name.clone().into_bytes().len() as i16)
+            .add_bytes(player_name.into_bytes())
+
+            .add_bool(false)
+            ;
+
+        packet.build().unwrap()
+    }
+
+    pub fn player_chat_message(player_name: String, msg: String, timestamp: u64, salt: u64) -> Vec<u8> {
+        let packet = PacketBuilder::new()
+            .set_id(Self::PlayerChatMessage)
+            .add_uuid(Uuid::from_u128(0)) // Player UUID. Zero for now
+            .add_varint(0) // Index (?)
+            .add_bool(false) // Signature present
+
+            .add_string(msg) // Message
+            .add_long(timestamp)
+            .add_long(salt)
+
+            .add_varint(0) // Previous msg count, max 20.
+
+            .add_bool(false) // Unsigned content present
+            .add_varint(0) // Filter type PASS_THROUGH
+
+            .add_varint(1) // Chat type index into registry (i REALLY need to implement registries lol)
+
+            .add_byte(0x8) // String NBT Tag
+            .add_short(player_name.clone().into_bytes().len() as i16)
+            .add_bytes(player_name.into_bytes())
+
+            //.add_string(format!("{{\"text\": \"{player_name}\"}}")) // Sender name
+            .add_bool(false) // Has target
+            ;
+
+        packet.build().unwrap()
+    }
+
+    /// See https://wiki.vg/Entity_statuses for event codes
+    pub fn entity_event(eid: i32, event: u8) -> Vec<u8> {
+        PacketBuilder::new()
+            .set_id(Self::EntityEvent)
+            .add_int(eid)
+            .add_byte(event)
+            .build().unwrap()
+    }
+
+    pub fn set_held_item(slot: u8) -> Vec<u8> {
+        PacketBuilder::new()
+            .set_id(Self::SetHeldItem)
+            .add_byte(slot)
+            .build().unwrap()
+    }
+
+    pub fn chunk_data(chunk: Chunk) -> Vec<u8> {
+        let data = chunk.network_data(|id| if id.eq("minecraft:air") {0} else {1});
+
+        let packet = PacketBuilder::new()
+            .set_id(Self::ChunkDataAndUpdateLight)
+            .add_int(chunk.chunk_pos().x)
+            .add_int(chunk.chunk_pos().z)
+            .add_byte(0x0a) // Compound NBT Tag ID
+            .add_byte(0x00) // NBT END Tag, since root tags have no name when transferred over the network.
+            .add_varint(data.len() as i32)
+            .add_bytes(data)
+            .add_varint(0) // block entities
+
+            .add_varint(0) // Bit sets
+            .add_varint(0) // Bit sets
+            .add_varint(0) // Bit sets
+            .add_varint(0) // Bit sets
+
+            .add_varint(0) // Skylight array size
+            .add_varint(0) // Blocklight array size
+            ;
+
+        packet.build().unwrap()
+    }
 }
 
 impl MCPacketType for PlayPacketClientBound {
@@ -65,6 +198,45 @@ impl PlayPacketServerBound {
         }
         let id = next_varint(&mut iterator)?;
         match id {
+            0x00 => {
+                Ok(Self::ConfirmTeleportation {
+                    id: next_varint(&mut iterator)?,
+                })
+            }
+            0x0A => {
+                Ok(Self::ClientInformation {
+                    locale: next_string(&mut iterator)?,
+                    view_distance: next_u8(&mut iterator)? as i8,
+                    chat_mode: next_varint(&mut iterator)?,
+                    chat_has_colors: next_bool(&mut iterator)?,
+                    displayed_skin_parts: next_u8(&mut iterator)?,
+                    main_hand: next_varint(&mut iterator)?,
+                    enable_text_filtering: next_bool(&mut iterator)?,
+                    allow_server_listings: next_bool(&mut iterator)?,
+                })
+            }
+            0x06 => {
+                Ok(Self::ChatMessage {
+                    message: next_string(&mut iterator)?,
+                    timestamp: next_u64(&mut iterator)? as i64,
+                    salt: next_u64(&mut iterator)? as i64,
+                    signature: if next_bool(&mut iterator)? {
+                        Some((&mut iterator).take(256).map(|n| *n).collect())
+                    } else {
+                        None
+                    },
+                    message_count: next_varint(&mut iterator)?,
+                    acknowledged: iterator.take(3).map(|n| *n).collect(),
+                })
+            }
+            0x0F => {
+                Ok(Self::CloseContainer(next_u8(&mut iterator)?))
+            }
+            0x13 => {
+                Ok(Self::DebugSampleSubscription {
+                    sample_type: next_varint(&mut iterator)?,
+                })
+            }
             0x1A => {
                 Ok(Self::SetPlayerPosition {
                     x: next_f64(&mut iterator)?,
@@ -83,7 +255,56 @@ impl PlayPacketServerBound {
                     on_ground: next_bool(&mut iterator)?,
                 })
             }
-            _ => unimplemented!("Invalid configuration packet id: {:02X}", id)
+            0x1C => {
+                Ok(Self::SetPlayerRotation {
+                    yaw: 0.0,
+                    pitch: 0.0,
+                    on_ground: false,
+                })
+            }
+            0x1D => {
+                Ok(Self::SetPlayerOnGround(next_bool(&mut iterator)?))
+            }
+            0x21 => {
+                Ok(Self::PingRequest(next_u64(&mut iterator)?))
+            }
+            0x23 => {
+                Ok(Self::PlayerAbilities(next_u8(&mut iterator)?))
+            }
+            0x24 => {
+                Ok(Self::PlayerAction {
+                    status: next_varint(&mut iterator)?,
+                    packed_location: next_u64(&mut iterator)?,
+                    face: next_u8(&mut iterator)?,
+                    sequence: next_varint(&mut iterator)?,
+                })
+            }
+            0x25 => {
+                Ok(Self::PlayerCommand {
+                    eid: next_varint(&mut iterator)?,
+                    id: next_varint(&mut iterator)?,
+                    jump_boost: next_varint(&mut iterator)?,
+                })
+            }
+            0x2F => {
+                Ok(Self::SetHeldItem(next_u16(&mut iterator)?))
+            }
+            0x36 => {
+                Ok(Self::SwingArm { off_hand: next_bool(&mut iterator)? })
+            }
+            0x38 => {
+                Ok(Self::UseItemOn {
+                    off_hand: next_bool(&mut iterator)?,
+                    packed_location: next_u64(&mut iterator)?,
+                    face: next_varint(&mut iterator)?,
+                    cursor_x: next_f32(&mut iterator)?,
+                    cursor_y: next_f32(&mut iterator)?,
+                    cursor_z: next_f32(&mut iterator)?,
+                    inside_block: next_bool(&mut iterator)?,
+                    sequence: next_varint(&mut iterator)?,
+                })
+            }
+            _ => unimplemented!("Invalid play packet id: {:02X}", id)
         }
     }
 }

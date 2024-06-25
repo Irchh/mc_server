@@ -32,7 +32,7 @@ impl MCServer {
         }
     }
 
-    pub fn run(self, listen: &str) {
+    pub fn run(mut self, listen: &str) {
         let listener = TcpListener::bind(listen).unwrap();
         listener.set_nonblocking(true).unwrap();
         info!("Listening on: {}", listen);
@@ -82,6 +82,14 @@ impl MCServer {
                                     }).unwrap();
                                 }
                                 send.send(ServerConnectionThreadBound::RegistryInfoFinished).unwrap();
+                            }
+                            ServerMainThreadBound::RequestChunk(pos) => {
+                                let _ = send.send(ServerConnectionThreadBound::ChunkData(self.world.get_chunk(pos)));
+                            }
+                            ServerMainThreadBound::ChatMessage { player_name, message, timestamp, salt } => {
+                                for (channel_send, _) in &channels {
+                                    let _= channel_send.send(ServerConnectionThreadBound::ChatMessage {player_name: player_name.clone(), message: message.clone(), timestamp, salt});
+                                }
                             }
                         }
                     }

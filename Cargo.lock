@@ -177,12 +177,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 
 [[package]]
+name = "mc_datatypes"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "thiserror",
+]
+
+[[package]]
 name = "mc_server"
 version = "0.1.0"
 dependencies = [
  "env_logger",
  "inbt",
  "log",
+ "mc_datatypes",
  "mc_world_parser",
  "rand",
  "serde",
@@ -197,6 +206,8 @@ name = "mc_world_parser"
 version = "0.1.0"
 dependencies = [
  "inbt",
+ "log",
+ "mc_datatypes",
  "thiserror",
 ]
 

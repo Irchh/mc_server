@@ -22,7 +22,6 @@ pub trait MCPacketType {
 //      packet_id: VarInt
 //      data: ByteArray
 
-
 fn next_varint(data: &mut Iter<u8>) -> Result<i32, ServerError> {
     let mut value = 0;
     let mut shift = 0;
@@ -46,6 +45,13 @@ fn next_u8(data: &mut Iter<u8>) -> Result<u8, ServerError> {
 
 fn next_u16(data: &mut Iter<u8>) -> Result<u16, ServerError> {
     Ok(u16::from_be_bytes([*data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?]))
+}
+
+fn next_u64(data: &mut Iter<u8>) -> Result<u64, ServerError> {
+    Ok(u64::from_be_bytes([
+        *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?,
+        *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?, *data.next().ok_or(ServerError::EndOfPacket)?,
+    ]))
 }
 
 fn next_f32(data: &mut Iter<u8>) -> Result<f32, ServerError> {

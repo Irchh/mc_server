@@ -1,4 +1,6 @@
 use inbt::NbtTag;
+use mc_world_parser::chunk::Chunk;
+use mc_world_parser::Position;
 use serde::Serialize;
 
 #[derive(Serialize, Clone)]
@@ -36,10 +38,14 @@ pub struct RegistryEntry {
 }
 
 pub enum ServerMainThreadBound {
-    RequestRegistryInfo
+    RequestRegistryInfo,
+    RequestChunk(Position),
+    ChatMessage { player_name: String, message: String, timestamp: i64, salt: i64, },
 }
 
 pub enum ServerConnectionThreadBound {
     RegistryInfo { registry_id: String, entries: Vec<RegistryEntry> },
     RegistryInfoFinished,
+    ChunkData(Option<Chunk>),
+    ChatMessage { player_name: String, message: String, timestamp: i64, salt: i64, },
 }

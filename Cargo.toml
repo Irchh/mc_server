@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 mc_world_parser = {path = "../mc_world_parser"}
 inbt = {path = "../inbt"}
+mc_datatypes = {path = "../mc_datatypes"}
 thiserror = "1.0.60"
 serde_json = "1.0.117"
 serde = { version = "1.0.203", features = ["derive"] }
