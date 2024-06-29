@@ -185,7 +185,7 @@ impl PlayPacketClientBound {
             let num = match id.as_str() {
                 "minecraft:air" => 0,
                 "minecraft:bedrock" => 79,
-                //_ => 131,
+                //_ => 155,
                 "minecraft:stone" => 1,
                 "minecraft:granite" => 2,
                 "minecraft:polished_granite" => 3,
@@ -248,7 +248,37 @@ impl PlayPacketClientBound {
                 "minecraft:coal_ore" => 127,
                 "minecraft:deepslate_coal_ore" => 128,
                 "minecraft:nether_gold_ore" => 129,
-                "minecraft:oak_log" => 130, // sideways lol
+                //"minecraft:oak_log" => 130, // This is on the X axis
+                "minecraft:oak_log" => 131, // This is on the Y axis
+                //"minecraft:oak_log" => 132, // This is on the Z axis
+                //"minecraft:spruce_log" => 133, // This is on the X axis
+                "minecraft:spruce_log" => 134, // This is on the Y axis
+                //"minecraft:spruce_log" => 135, // This is on the Z axis
+                //"minecraft:birch_log" => 136, // This is on the X axis
+                "minecraft:birch_log" => 137, // This is on the Y axis
+                //"minecraft:birch_log" => 138, // This is on the Z axis
+
+                //"minecraft:jungle_log" => 139, // This is on the X axis
+                "minecraft:jungle_log" => 140, // This is on the Y axis
+                //"minecraft:jungle_log" => 141, // This is on the Z axis
+
+                //"minecraft:acacia_log" => 142, // This is on the X axis
+                "minecraft:acacia_log" => 143, // This is on the Y axis
+                //"minecraft:acacia_log" => 144, // This is on the Z axis
+
+                //"minecraft:cherry_log" => 145, // This is on the X axis
+                "minecraft:cherry_log" => 146, // This is on the Y axis
+                //"minecraft:cherry_log" => 147, // This is on the Z axis
+
+                //"minecraft:dark_oak_log" => 148, // This is on the X axis
+                "minecraft:dark_oak_log" => 149, // This is on the Y axis
+                //"minecraft:dark_oak_log" => 150, // This is on the Z axis
+
+                //"minecraft:mangrove_log" => 151, // This is on the X axis
+                "minecraft:mangrove_log" => 152, // This is on the Y axis
+                //"minecraft:mangrove_log" => 153, // This is on the Z axis
+
+                // 154 is waterlogged mangrove roots, BIG LAG
                 _ => 0,
             };
             num
