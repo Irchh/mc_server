@@ -1,8 +1,17 @@
+use log::debug;
 use mc_world_parser::chunk::Chunk;
 use uuid::Uuid;
 use crate::error::ServerError;
 use crate::packet::*;
 use crate::packet_builder::PacketBuilder;
+
+#[derive(Debug)]
+pub struct Slot {
+    pub(crate) count: i32,
+    pub(crate) item_id: Option<i32>,
+    pub(crate) components_to_add: Option<Vec<(i32, Vec<u8>)>>,
+    pub(crate) number_to_remove: Option<Vec<i32>>,
+}
 
 #[derive(Debug)]
 pub enum PlayPacketServerBound {
@@ -20,8 +29,10 @@ pub enum PlayPacketServerBound {
     PlayerAction { status: i32, packed_location: u64, face: u8, sequence: i32 },
     PlayerCommand { eid: i32, id: i32, jump_boost: i32 },
     SetHeldItem(u16),
+    SetCreativeModeSlot { slot: u16, clicked_item: Slot },
     SwingArm{ off_hand: bool },
     UseItemOn { off_hand: bool, packed_location: u64, face: i32, cursor_x: f32, cursor_y: f32, cursor_z: f32, inside_block: bool, sequence: i32 },
+    UseItem { off_hand: bool, sequence: i32, yaw: f32, pitch: f32 },
 }
 
 #[repr(i32)]
@@ -158,7 +169,78 @@ impl PlayPacketClientBound {
     }
 
     pub fn chunk_data(chunk: Chunk) -> Vec<u8> {
-        let data = chunk.network_data(|id| if id.eq("minecraft:air") {0} else {1});
+        let data = chunk.network_data(|id| {
+            let num = match id.as_str() {
+                "minecraft:air" => 0,
+                "minecraft:bedrock" => 79,
+                //_ => 131,
+                "minecraft:stone" => 1,
+                "minecraft:granite" => 2,
+                "minecraft:polished_granite" => 3,
+                "minecraft:diorite" => 4,
+                "minecraft:polished_diorite" => 5,
+                "minecraft:andesite" => 6,
+                "minecraft:polished_andesite" => 7,
+                "minecraft:grass_block_but_snowy" => 8, // idk lol
+                "minecraft:grass_block" => 9,
+                "minecraft:dirt" => 10,
+                "minecraft:coarse_dirt" => 11,
+                "minecraft:podzol_but_snowy" => 12,
+                "minecraft:podzol" => 13,
+                "minecraft:cobblestone" => 14,
+                "minecraft:oak_planks" => 15,
+                "minecraft:spruce_planks" => 16,
+                "minecraft:birch_planks" => 17,
+                "minecraft:jungle_planks" => 18,
+                "minecraft:acacia_planks" => 19,
+                "minecraft:cherry_planks" => 20,
+                "minecraft:dark_oak_planks" => 21,
+                "minecraft:mangrove_planks" => 22,
+                "minecraft:bamboo_planks" => 23,
+                "minecraft:bamboo_mosaic" => 24,
+                "minecraft:oak_sapling" => 25,
+                "minecraft:oak_sapling_stage_1" => 26,
+                "minecraft:spruce_sapling" => 27,
+                "minecraft:spruce_sapling_stage_1" => 28,
+                "minecraft:birch_sapling" => 29,
+                "minecraft:birch_sapling_stage_1" => 30,
+                "minecraft:jungle_sapling" => 31,
+                "minecraft:jungle_sapling_stage_1" => 32,
+                "minecraft:acacia_sapling" => 33,
+                "minecraft:acacia_sapling_stage_1" => 34,
+                "minecraft:cherry_sapling" => 35,
+                "minecraft:cherry_sapling_stage_1" => 36,
+                "minecraft:dark_oak_sapling" => 37,
+                "minecraft:dark_oak_sapling_stage_1" => 38,
+                // lots of propagule stuff
+                "minecraft:bedrock" => 79,
+                "minecraft:water" => 80,
+                //"minecraft:water_level_7" => 81,
+                //"minecraft:water_level_6" => 82,
+                //"minecraft:water_level_5" => 83,
+                //"minecraft:water_level_4" => 84,
+                //"minecraft:water_level_3" => 85,
+                //"minecraft:water_level_2" => 86,
+                //"minecraft:water_level_1" => 87,
+                // 88 - 95 weird flowing/falling water stuff
+                // 96 - 110 weird lava that looks like water
+                "minecraft:sand" => 112,
+                "minecraft:suspicious_sand" => 113,
+                // 114-118 different dusted levels of sus sand
+                "minecraft:suspicious_gravel" => 119,
+                // 120-122 different dusted levels of sus gravel
+                "minecraft:gold_ore" => 123,
+                "minecraft:deepslate_gold_ore" => 124,
+                "minecraft:iron_ore" => 125,
+                "minecraft:deepslate_iron_ore" => 126,
+                "minecraft:coal_ore" => 127,
+                "minecraft:deepslate_coal_ore" => 128,
+                "minecraft:nether_gold_ore" => 129,
+                "minecraft:oak_log" => 130, // sideways lol
+                _ => 0,
+            };
+            num
+        });
 
         let packet = PacketBuilder::new()
             .set_id(Self::ChunkDataAndUpdateLight)
@@ -289,6 +371,26 @@ impl PlayPacketServerBound {
             0x2F => {
                 Ok(Self::SetHeldItem(next_u16(&mut iterator)?))
             }
+            0x32 => {
+                let slot = next_u16(&mut iterator)?;
+                let count = next_varint(&mut iterator)?;
+                if count > 0 {
+                    Ok(Self::SetCreativeModeSlot {
+                        slot,
+                        clicked_item: Slot {
+                            count,
+                            item_id: Some(next_varint(&mut iterator)?),
+                            components_to_add: None, // TODO
+                            number_to_remove: None, // TODO
+                        },
+                    })
+                } else {
+                    Ok(Self::SetCreativeModeSlot {
+                        slot,
+                        clicked_item: Slot { count, item_id: None, components_to_add: None, number_to_remove: None, },
+                    })
+                }
+            }
             0x36 => {
                 Ok(Self::SwingArm { off_hand: next_bool(&mut iterator)? })
             }
@@ -302,6 +404,14 @@ impl PlayPacketServerBound {
                     cursor_z: next_f32(&mut iterator)?,
                     inside_block: next_bool(&mut iterator)?,
                     sequence: next_varint(&mut iterator)?,
+                })
+            }
+            0x39 => {
+                Ok(Self::UseItem {
+                    off_hand: next_bool(&mut iterator)?,
+                    sequence: next_varint(&mut iterator)?,
+                    yaw: next_f32(&mut iterator)?,
+                    pitch: next_f32(&mut iterator)?,
                 })
             }
             _ => unimplemented!("Invalid play packet id: {:02X}", id)

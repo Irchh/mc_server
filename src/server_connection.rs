@@ -49,7 +49,7 @@ impl Player {
     }
     pub fn set_pos(&mut self, x: f64, y: f64, z: f64) {
         self.x = x;
-        self.y = y.max(85f64);
+        self.y = y;
         self.z = z;
     }
 
@@ -182,7 +182,12 @@ impl MCServerConnection {
 
     fn handle_chunk_loading(&mut self) {
         // TODO: Handle position ig
-        let chunk_to_load = vec![Position::new(0, 0, 0), Position::new(-1, 0, 0), Position::new(0, 0, -1), Position::new(-1, 0, -1)];
+        let mut chunk_to_load = vec![];
+        for x in -6..6 {
+            for z in -6..6 {
+                chunk_to_load.push(Position::new(x, 0, z));
+            }
+        }
         for chunk in chunk_to_load {
             if !self.client_loaded_chunks.contains(&chunk) {
                 self.client_loaded_chunks.push(chunk);
@@ -229,14 +234,19 @@ impl MCServerConnection {
         let confirm_id = self.player.confirm_tp_count;
         self.player.confirm_tp_count += 1;
         //sleep(Duration::from_secs_f64(0.1));
+        let (new_y, mask) = if self.player.y < -80f64 {
+            (-64f64, 0x1D)
+        } else {
+            (0f64, 0x1F)
+        };
         let packet = PacketBuilder::new()
             .set_id(PlayPacketClientBound::SyncPlayerPosition)
             .add_double(0f64)
-            .add_double(0f64)
+            .add_double(new_y)
             .add_double(0f64)
             .add_float(0f32)
             .add_float(0f32)
-            .add_byte(0x1F)
+            .add_byte(mask)
             .add_varint(confirm_id as i32)
             ;
         self.waiting_for_confirm_teleport = Some(confirm_id as i32);
@@ -385,6 +395,7 @@ impl MCServerConnection {
                 self.state = ConnectionStatusType::Play;
                 debug!("Going into Play state");
                 self.play_mode_initialize_client();
+                let _= self.sender.send(ServerMainThreadBound::ChatMessage { player_name: self.pretty_identifier.clone(), message: "Joined the game".to_string(), timestamp: 0, salt: 0 });
                 Ok(())
             }
             ConfigurationPacketType::ServerBoundKnownPacks { known_packs } => {
@@ -452,8 +463,12 @@ impl MCServerConnection {
             PlayPacketServerBound::PlayerAction { .. } => {}
             PlayPacketServerBound::PlayerCommand { .. } => {}
             PlayPacketServerBound::SetHeldItem { .. } => {}
+            PlayPacketServerBound::SetCreativeModeSlot { slot, clicked_item } => {
+                debug!("Set slot {slot} to {:?}", clicked_item.item_id)
+            }
             PlayPacketServerBound::SwingArm { .. } => {}
             PlayPacketServerBound::UseItemOn { .. } => {}
+            PlayPacketServerBound::UseItem { .. } => {}
         }
         Ok(())
     }

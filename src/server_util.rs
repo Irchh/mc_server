@@ -37,6 +37,12 @@ pub struct RegistryEntry {
     pub data: Option<NbtTag>,
 }
 
+#[derive(Debug, Clone)]
+pub struct TagEntry {
+    pub id: String,
+    pub data: Option<NbtTag>,
+}
+
 pub enum ServerMainThreadBound {
     RequestRegistryInfo,
     RequestChunk(Position),

@@ -5,10 +5,11 @@ use std::str::FromStr;
 use log::debug;
 use serde_json::Value;
 use walkdir::WalkDir;
-use crate::server_util::RegistryEntry;
+use crate::server_util::{RegistryEntry, TagEntry};
 
 pub struct ResourceManager {
-    registries: BTreeMap<String, Vec<RegistryEntry>>
+    registries: BTreeMap<String, Vec<RegistryEntry>>,
+    tags: Vec<TagEntry>,
 }
 
 impl ResourceManager {
@@ -40,8 +41,14 @@ impl ResourceManager {
 
             registries.insert(namespace + ":" + id.strip_suffix(".json").unwrap(), entries);
         }
+
+        let file_data = std::fs::read_to_string("resources/tags/minecraft/tags.json").unwrap();
+        let json = Value::from_str(&*file_data).unwrap();
+        let tags = Self::json_to_tags(json);
+
         Ok(Self {
             registries,
+            tags,
         })
     }
 
@@ -60,6 +67,18 @@ impl ResourceManager {
                 id: namespace.to_string() + ":" + name,
                 data: None,
             });
+        }
+        entries
+    }
+
+    fn json_to_tags(json: Value) -> Vec<TagEntry> {
+        let mut entries = vec![];
+        let map = json.get("tags").unwrap().as_object().unwrap();
+        for (id, val) in map {
+            entries.push(TagEntry {
+                id: id.clone(),
+                data: None,
+            })
         }
         entries
     }
