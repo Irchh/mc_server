@@ -7,7 +7,7 @@ use std::time::{Duration, SystemTime};
 use log::*;
 use mc_world_parser::Position;
 use rand::random;
-use mc_datatypes::{MCString, VarInt};
+use mc_datatypes::{BlockPos, MCString, VarInt};
 use crate::command::CommandNode;
 use crate::error::ServerError;
 use crate::packet::{ConfigurationPacketResponse, ConfigurationPacketType, HandshakePacketType, LoginPacketResponse, LoginPacketType, PlayPacketClientBound, PlayPacketServerBound, StatusPacketType};
@@ -61,6 +61,13 @@ impl Player {
 
     pub fn set_on_ground(&mut self, on_ground: bool) {
         self.on_ground = on_ground;
+    }
+    
+    pub fn block_pos(&self) -> BlockPos {
+        let x = self.x.floor() as i32;
+        let y = self.y.floor() as i32;
+        let z = self.z.floor() as i32;
+        BlockPos::new(x, y, z)
     }
 }
 
@@ -430,6 +437,8 @@ impl MCServerConnection {
             }
             PlayPacketServerBound::ChatCommand { command } => {
                 info!("{} ran the command: {}", self.pretty_identifier, command);
+                let block_state = command[6..].parse::<i32>().unwrap();
+                self.send_packet(PlayPacketClientBound::block_update(block_state, self.player.block_pos()));
             }
             PlayPacketServerBound::ClientInformation { .. } => {}
             PlayPacketServerBound::ChatMessage { message, timestamp, salt, .. } => {

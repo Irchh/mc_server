@@ -1,5 +1,5 @@
 use log::debug;
-use mc_datatypes::VarInt;
+use mc_datatypes::{BlockPos, VarInt};
 use mc_world_parser::chunk::Chunk;
 use uuid::Uuid;
 use crate::command::CommandNode;
@@ -41,6 +41,7 @@ pub enum PlayPacketServerBound {
 #[repr(i32)]
 pub enum PlayPacketClientBound {
     AcknowledgeBlockChange = 0x05,
+    BlockUpdate = 0x09,
     ChangeDifficulty = 0x0B,
     Commands = 0x11,
     DisguisedChatMessage = 0x1E,
@@ -58,6 +59,15 @@ pub enum PlayPacketClientBound {
 }
 
 impl PlayPacketClientBound {
+    pub fn block_update(block_state: i32, pos: BlockPos) -> Vec<u8> {
+        debug!("Updating block at {:?} to {block_state}", pos);
+        PacketBuilder::new()
+            .set_id(Self::BlockUpdate)
+            .add_long(pos.packed())
+            .add_varint(block_state)
+            .build().unwrap()
+    }
+
     pub fn login(eid: i32, hardcore: bool, dimension_names: Vec<String>, max_players: i32, view_dist: i32, ) -> Vec<u8> {
         let mut packet = PacketBuilder::new()
             .set_id(Self::Login)
