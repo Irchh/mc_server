@@ -5,7 +5,7 @@ use std::str::FromStr;
 use log::debug;
 use serde_json::Value;
 use walkdir::WalkDir;
-use crate::server_util::{RegistryEntry, TagEntry};
+use crate::server_util::{RegistryEntry, TagEntry, TagEntryData};
 
 pub struct ResourceManager {
     registries: BTreeMap<String, Vec<RegistryEntry>>,
@@ -56,6 +56,10 @@ impl ResourceManager {
         &self.registries
     }
 
+    pub fn tags_ref(&self) -> &Vec<TagEntry> {
+        &self.tags
+    }
+
     fn json_to_registry_entries(json: Value) -> Vec<RegistryEntry> {
         let mut entries = vec![];
         let map = json.get("entries").unwrap().as_array().unwrap();
@@ -72,12 +76,23 @@ impl ResourceManager {
     }
 
     fn json_to_tags(json: Value) -> Vec<TagEntry> {
+        // TODO: Fix these variable names
         let mut entries = vec![];
         let map = json.get("tags").unwrap().as_object().unwrap();
         for (id, val) in map {
+            let tag_entry_data_arr = val.as_array().cloned().unwrap();
+            let mut data = vec![];
+            for entry_data in tag_entry_data_arr {
+                let entry_entries = entry_data.get("entries").unwrap().as_array().unwrap().iter().map(|v| v.as_i64().unwrap() as i32).collect::<Vec<i32>>();
+                let tag_name = entry_data.get("tag_name").unwrap();
+                data.push(TagEntryData {
+                    entries: entry_entries,
+                    tag_name: tag_name.get("namespace").unwrap().as_str().unwrap().to_string() + ":" + tag_name.get("name").unwrap().as_str().unwrap(),
+                });
+            }
             entries.push(TagEntry {
                 id: id.clone(),
-                data: None,
+                data
             })
         }
         entries

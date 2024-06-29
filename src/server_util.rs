@@ -38,13 +38,20 @@ pub struct RegistryEntry {
 }
 
 #[derive(Debug, Clone)]
+pub struct TagEntryData {
+    pub entries: Vec<i32>,
+    pub tag_name: String, // Identifier
+}
+
+#[derive(Debug, Clone)]
 pub struct TagEntry {
     pub id: String,
-    pub data: Option<NbtTag>,
+    pub data: Vec<TagEntryData>,
 }
 
 pub enum ServerMainThreadBound {
     RequestRegistryInfo,
+    RequestTagInfo,
     RequestChunk(Position),
     ChatMessage { player_name: String, message: String, timestamp: i64, salt: i64, },
 }
@@ -52,6 +59,7 @@ pub enum ServerMainThreadBound {
 pub enum ServerConnectionThreadBound {
     RegistryInfo { registry_id: String, entries: Vec<RegistryEntry> },
     RegistryInfoFinished,
+    TagInfo(Vec<TagEntry>),
     ChunkData(Option<Chunk>),
     ChatMessage { player_name: String, message: String, timestamp: i64, salt: i64, },
 }

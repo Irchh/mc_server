@@ -152,6 +152,10 @@ impl MCServerConnection {
                         ServerConnectionThreadBound::RegistryInfo { registry_id, entries } => {
                             self.send_packet(ConfigurationPacketResponse::registry_data(registry_id, entries));
                         }
+                        ServerConnectionThreadBound::TagInfo(tags) => {
+                            self.send_packet(ConfigurationPacketResponse::update_tags(tags));
+                            self.sender.send(ServerMainThreadBound::RequestRegistryInfo).unwrap();
+                        }
                         ServerConnectionThreadBound::RegistryInfoFinished => {
                             // Next stage ig
                             let packet = PacketBuilder::new()
@@ -406,7 +410,7 @@ impl MCServerConnection {
                 } else {
                     panic!("Client known packs empty");
                 }
-                self.sender.send(ServerMainThreadBound::RequestRegistryInfo).unwrap();
+                self.sender.send(ServerMainThreadBound::RequestTagInfo).unwrap();
                 Ok(())
             }
         }

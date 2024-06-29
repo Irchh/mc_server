@@ -2,7 +2,7 @@ use log::error;
 use crate::error::ServerError;
 use crate::packet::*;
 use crate::packet_builder::PacketBuilder;
-use crate::server_util::RegistryEntry;
+use crate::server_util::{RegistryEntry, TagEntry};
 
 #[derive(Debug)]
 pub struct KnownPack {
@@ -34,6 +34,7 @@ pub enum ConfigurationPacketResponse {
     Disconnect = 0x02,
     FinishConfiguration = 0x03,
     RegistryData = 0x07,
+    UpdateTags = 0x0D,
     ClientBoundKnownPacks = 0x0E,
 }
 
@@ -56,6 +57,26 @@ impl ConfigurationPacketResponse {
                 .add_bool(false);
             if entry.data.is_some() {
                 //packet = packet.add_nbt(entry.data.unwrap();
+            }
+        }
+
+        packet.build().unwrap()
+    }
+
+    pub fn update_tags(tags: Vec<TagEntry>) -> Vec<u8> {
+        let mut packet = PacketBuilder::new()
+            .set_id(Self::UpdateTags)
+            .add_varint(tags.len() as i32);
+
+        for tag in tags {
+            packet = packet.add_string(tag.id)
+                .add_varint(tag.data.len() as i32);
+            for tag_array in tag.data {
+                packet = packet.add_string(tag_array.tag_name)
+                    .add_varint(tag_array.entries.len() as i32);
+                for entry in tag_array.entries {
+                    packet = packet.add_varint(entry);
+                }
             }
         }
 

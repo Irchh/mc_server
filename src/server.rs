@@ -76,12 +76,15 @@ impl MCServer {
                         match request {
                             ServerMainThreadBound::RequestRegistryInfo => {
                                 for (id, entries) in self.resource_manager.registries_ref() {
-                                    send.send(ServerConnectionThreadBound::RegistryInfo {
+                                    let _ = send.send(ServerConnectionThreadBound::RegistryInfo {
                                         registry_id: id.clone(),
                                         entries: entries.clone(),
-                                    }).unwrap();
+                                    });
                                 }
-                                send.send(ServerConnectionThreadBound::RegistryInfoFinished).unwrap();
+                                let _ = send.send(ServerConnectionThreadBound::RegistryInfoFinished);
+                            }
+                            ServerMainThreadBound::RequestTagInfo => {
+                                let _ = send.send(ServerConnectionThreadBound::TagInfo(self.resource_manager.tags_ref().clone()));
                             }
                             ServerMainThreadBound::RequestChunk(pos) => {
                                 let _ = send.send(ServerConnectionThreadBound::ChunkData(self.world.get_chunk(pos)));
