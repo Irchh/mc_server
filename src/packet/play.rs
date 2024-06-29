@@ -1,6 +1,8 @@
 use log::debug;
+use mc_datatypes::VarInt;
 use mc_world_parser::chunk::Chunk;
 use uuid::Uuid;
+use crate::command::CommandNode;
 use crate::error::ServerError;
 use crate::packet::*;
 use crate::packet_builder::PacketBuilder;
@@ -16,6 +18,7 @@ pub struct Slot {
 #[derive(Debug)]
 pub enum PlayPacketServerBound {
     ConfirmTeleportation { id: i32 },
+    ChatCommand { command: String },
     ChatMessage { message: String, timestamp: i64, salt: i64, signature: Option<Vec<u8>>, message_count: i32, acknowledged: Vec<u8> },
     CloseContainer(u8),
     ClientInformation { locale: String, view_distance: i8, chat_mode: i32, chat_has_colors: bool, /** This is a bit mask */ displayed_skin_parts: u8, main_hand: i32, enable_text_filtering: bool, allow_server_listings: bool,  },
@@ -39,6 +42,7 @@ pub enum PlayPacketServerBound {
 pub enum PlayPacketClientBound {
     AcknowledgeBlockChange = 0x05,
     ChangeDifficulty = 0x0B,
+    Commands = 0x11,
     DisguisedChatMessage = 0x1E,
     EntityEvent = 0x1F,
     ChunkDataAndUpdateLight = 0x27,
@@ -92,6 +96,40 @@ impl PlayPacketClientBound {
             .set_id(Self::ChangeDifficulty)
             .add_byte(difficulty)
             .add_bool(false)
+            .build().unwrap()
+    }
+
+    pub fn commands(nodes: Vec<CommandNode>) -> Vec<u8> {
+        let mut packet = PacketBuilder::new()
+            .set_id(Self::Commands)
+            .add_varint(nodes.len() as i32);
+
+        for node in nodes {
+            let flags = node.node_type as u8 | 0x04 * node.is_executable as u8 | 0x08 * node.redirect.is_some() as u8 | 0x10 * node.suggestions_type.is_some() as u8;
+            let children = node.children.iter().flat_map(|c| VarInt::new(*c).bytes).collect::<Vec<u8>>();
+            packet = packet
+                .add_byte(flags)
+                .add_varint(node.children.len() as i32)
+                .add_bytes(children);
+            if node.redirect.is_some() {
+                packet = packet.add_varint(node.redirect.unwrap());
+            }
+            if node.name.is_some() {
+                packet = packet.add_string(node.name.unwrap());
+            }
+            if node.parser.is_some() {
+                let parser = node.parser.unwrap();
+                packet = packet
+                    .add_varint(parser.id())
+                    .add_bytes(parser.properties());
+            }
+            if node.suggestions_type.is_some() {
+                packet = packet.add_string(node.suggestions_type.unwrap());
+            }
+        }
+
+        packet
+            .add_varint(0) // Root node
             .build().unwrap()
     }
 
@@ -323,9 +361,10 @@ impl PlayPacketServerBound {
         let id = next_varint(&mut iterator)?;
         match id {
             0x00 => {
-                Ok(Self::ConfirmTeleportation {
-                    id: next_varint(&mut iterator)?,
-                })
+                Ok(Self::ConfirmTeleportation { id: next_varint(&mut iterator)? })
+            }
+            0x04 => {
+                Ok(Self::ChatCommand { command: next_string(&mut iterator)? })
             }
             0x0A => {
                 Ok(Self::ClientInformation {

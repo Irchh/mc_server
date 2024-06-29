@@ -8,6 +8,7 @@ use log::*;
 use mc_world_parser::Position;
 use rand::random;
 use mc_datatypes::{MCString, VarInt};
+use crate::command::CommandNode;
 use crate::error::ServerError;
 use crate::packet::{ConfigurationPacketResponse, ConfigurationPacketType, HandshakePacketType, LoginPacketResponse, LoginPacketType, PlayPacketClientBound, PlayPacketServerBound, StatusPacketType};
 use crate::packet_builder::PacketBuilder;
@@ -261,6 +262,7 @@ impl MCServerConnection {
         // Sends all required packets for clients to connect that don't get sent on different signals
         self.send_packet(PlayPacketClientBound::login(self.player.eid, false, vec!["minecraft:overworld".to_string(), "minecraft:the_end".to_string(), "minecraft:the_nether".to_string()], 20, 10));
         self.send_packet(PlayPacketClientBound::change_difficulty(1));
+        self.send_packet(PlayPacketClientBound::commands(CommandNode::commands()));
         self.send_packet(PlayPacketClientBound::player_abilities());
         self.send_packet(PlayPacketClientBound::set_held_item(0));
         //self.send_packet(PlayPacketClientBound::set_recipes());
@@ -425,6 +427,9 @@ impl MCServerConnection {
                 if self.waiting_for_confirm_teleport == Some(id) {
                     self.waiting_for_confirm_teleport = None;
                 }
+            }
+            PlayPacketServerBound::ChatCommand { command } => {
+                info!("{} ran the command: {}", self.pretty_identifier, command);
             }
             PlayPacketServerBound::ClientInformation { .. } => {}
             PlayPacketServerBound::ChatMessage { message, timestamp, salt, .. } => {
