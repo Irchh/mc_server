@@ -50,6 +50,7 @@ pub enum PlayPacketClientBound {
     SetHeldItem = 0x53,
     SetTickingState = 0x71,
     StepTick = 0x72,
+    EntityEffect = 0x76,
 }
 
 impl PlayPacketClientBound {
@@ -158,6 +159,17 @@ impl PlayPacketClientBound {
             .set_id(Self::EntityEvent)
             .add_int(eid)
             .add_byte(event)
+            .build().unwrap()
+    }
+
+    pub fn entity_effect(eid: i32, effect: i32, amplifier: i32, duration: i32, flags: u8) -> Vec<u8> {
+        PacketBuilder::new()
+            .set_id(Self::EntityEffect)
+            .add_varint(eid)
+            .add_varint(effect)
+            .add_varint(amplifier)
+            .add_varint(duration)
+            .add_byte(flags)
             .build().unwrap()
     }
 

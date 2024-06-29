@@ -265,6 +265,7 @@ impl MCServerConnection {
         self.send_packet(PlayPacketClientBound::set_held_item(0));
         //self.send_packet(PlayPacketClientBound::set_recipes());
         self.send_packet(PlayPacketClientBound::entity_event(self.player.eid, 24));
+        self.send_packet(PlayPacketClientBound::entity_effect(self.player.eid, 15, 1, 0x7F, 0x07));
     }
 
     fn handle_packet(&mut self, packet: Vec<u8>) -> Result<(), ServerError> {
