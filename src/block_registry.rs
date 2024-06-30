@@ -52,7 +52,7 @@ impl BlockRegistry {
         for (name, states) in &self.blocks {
             if block.identifier().eq(name) {
                 for state in &states.states {
-                    if state.default {
+                    if state.properties.eq(block.properties()) {
                         return Some(state.id);
                     }
                 }
