@@ -14,7 +14,8 @@ pub struct BlockStateDefinition {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct BlockState {
-    default: Option<bool>,
+    #[serde(default)]
+    default: bool,
     id: i32,
     #[serde(default)]
     properties: BTreeMap<String, String>
@@ -51,10 +52,8 @@ impl BlockRegistry {
         for (name, states) in &self.blocks {
             if block.identifier().eq(name) {
                 for state in &states.states {
-                    if let Some(default) = state.default {
-                        if default {
-                            return Some(state.id);
-                        }
+                    if state.default {
+                        return Some(state.id);
                     }
                 }
             }
