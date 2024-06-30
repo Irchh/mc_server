@@ -142,7 +142,7 @@ impl MCServerConnection {
                     loop {
                         // Cloning here is inefficient but heck
                         if let Ok(packet_size) = VarInt::from(self.packet_buffer.clone()) {
-                            if self.packet_buffer.len() >= packet_size.value as usize {
+                            if self.packet_buffer.len() >= packet_size.value as usize + packet_size.bytes.len() {
                                 let packet = self.packet_buffer.drain(0..(packet_size.value as usize + packet_size.bytes.len())).collect();
                                 self.handle_packet(packet).unwrap();
                                 continue;
