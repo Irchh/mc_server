@@ -2,6 +2,7 @@ use inbt::NbtTag;
 use mc_world_parser::chunk::Chunk;
 use mc_world_parser::Position;
 use serde::Serialize;
+use crate::block_registry::BlockRegistry;
 
 #[derive(Serialize, Clone)]
 pub struct VersionInfo {

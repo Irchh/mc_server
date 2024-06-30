@@ -5,10 +5,12 @@ use std::str::FromStr;
 use log::debug;
 use serde_json::Value;
 use walkdir::WalkDir;
+use crate::block_registry::BlockRegistry;
 use crate::server_util::{RegistryEntry, TagEntry, TagEntryData};
 
 pub struct ResourceManager {
     registries: BTreeMap<String, Vec<RegistryEntry>>,
+    block_registry: BlockRegistry,
     tags: Vec<TagEntry>,
 }
 
@@ -48,12 +50,17 @@ impl ResourceManager {
 
         Ok(Self {
             registries,
+            block_registry: BlockRegistry::load("resources/blocks.json")?,
             tags,
         })
     }
 
     pub fn registries_ref(&self) -> &BTreeMap<String, Vec<RegistryEntry>> {
         &self.registries
+    }
+
+    pub fn block_registry_ref(&self) -> &BlockRegistry {
+        &self.block_registry
     }
 
     pub fn tags_ref(&self) -> &Vec<TagEntry> {

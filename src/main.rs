@@ -6,6 +6,7 @@ mod server;
 mod server_connection;
 mod resource_manager;
 mod command;
+mod block_registry;
 
 use std::env;
 use crate::server::MCServer;

@@ -46,8 +46,9 @@ impl MCServer {
                     let ch_to_thread = std::sync::mpsc::channel();
                     let ch_from_thread = std::sync::mpsc::channel();
                     let server_info = self.server_info.clone();
+                    let block_reg = self.resource_manager.block_registry_ref().clone();
                     threads.push(thread::spawn(|| {
-                        MCServerConnection::new(connection, ch_from_thread.0, ch_to_thread.1, server_info).run()
+                        MCServerConnection::new(connection, ch_from_thread.0, ch_to_thread.1, server_info, block_reg).run()
                     }));
                     channels.push((ch_to_thread.0, ch_from_thread.1));
                 }

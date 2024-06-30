@@ -8,6 +8,7 @@ use log::*;
 use mc_world_parser::Position;
 use rand::random;
 use mc_datatypes::{BlockPos, MCString, VarInt};
+use crate::block_registry::BlockRegistry;
 use crate::command::CommandNode;
 use crate::error::ServerError;
 use crate::packet::{ConfigurationPacketResponse, ConfigurationPacketType, HandshakePacketType, LoginPacketResponse, LoginPacketType, PlayPacketClientBound, PlayPacketServerBound, StatusPacketType};
@@ -79,6 +80,7 @@ pub struct MCServerConnection {
     receiver: Receiver<ServerConnectionThreadBound>,
     server_info: ServerInfo,
     packet_buffer: Vec<u8>,
+    block_registry: BlockRegistry,
     client_loaded_chunks: Vec<Position>,
     player: Player,
     last_tick: SystemTime,
@@ -86,7 +88,7 @@ pub struct MCServerConnection {
 }
 
 impl MCServerConnection {
-    pub fn new(connection: TcpStream, sender: Sender<ServerMainThreadBound>, receiver: Receiver<ServerConnectionThreadBound>, server_info: ServerInfo) -> Self {
+    pub fn new(connection: TcpStream, sender: Sender<ServerMainThreadBound>, receiver: Receiver<ServerConnectionThreadBound>, server_info: ServerInfo, block_registry: BlockRegistry) -> Self {
         connection.set_nonblocking(true).unwrap();
         Self {
             pretty_identifier: connection.peer_addr().map(|a| {a.to_string()}).unwrap_or("UNKNOWN".to_string()),
@@ -96,6 +98,7 @@ impl MCServerConnection {
             receiver,
             server_info,
             packet_buffer: vec![],
+            block_registry,
             client_loaded_chunks: vec![],
             player: Player::new(random()),
             last_tick: SystemTime::UNIX_EPOCH,
@@ -174,7 +177,7 @@ impl MCServerConnection {
                         }
                         ServerConnectionThreadBound::ChunkData(chunk) => {
                             if let Some(chunk) = chunk {
-                                self.send_packet(PlayPacketClientBound::chunk_data(chunk));
+                                self.send_packet(PlayPacketClientBound::chunk_data(chunk, Box::new(self.block_registry.clone())));
                             }
                         }
                         ServerConnectionThreadBound::ChatMessage { player_name, message, timestamp, salt } => {
