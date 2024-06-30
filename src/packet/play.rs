@@ -1,6 +1,6 @@
 use log::debug;
 use mc_datatypes::{BlockPos, VarInt};
-use mc_world_parser::Block;
+use mc_world_parser::{Block, Position};
 use mc_world_parser::chunk::Chunk;
 use mc_world_parser::section::BlockIDGetter;
 use uuid::Uuid;
@@ -55,6 +55,7 @@ pub enum PlayPacketClientBound {
     Login = 0x2B,
     SyncPlayerPosition = 0x40,
     SetHeldItem = 0x53,
+    SetCenterChunk = 0x54,
     SetTickingState = 0x71,
     StepTick = 0x72,
     EntityEffect = 0x76,
@@ -227,6 +228,14 @@ impl PlayPacketClientBound {
         PacketBuilder::new()
             .set_id(Self::SetHeldItem)
             .add_byte(slot)
+            .build().unwrap()
+    }
+
+    pub fn set_center_chunk(player_position: BlockPos) -> Vec<u8> {
+        PacketBuilder::new()
+            .set_id(Self::SetCenterChunk)
+            .add_varint(player_position.x()/16)
+            .add_varint(player_position.z()/16)
             .build().unwrap()
     }
 

@@ -1,4 +1,4 @@
-use std::cmp::PartialEq;
+use std::cmp::{Ordering, PartialEq};
 use std::io::{ErrorKind, Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::sync::mpsc::{Receiver, Sender, TryRecvError};
@@ -63,7 +63,7 @@ impl Player {
     pub fn set_on_ground(&mut self, on_ground: bool) {
         self.on_ground = on_ground;
     }
-    
+
     pub fn block_pos(&self) -> BlockPos {
         let x = self.x.floor() as i32;
         let y = self.y.floor() as i32;
@@ -85,6 +85,7 @@ pub struct MCServerConnection {
     player: Player,
     last_tick: SystemTime,
     waiting_for_confirm_teleport: Option<i32>,
+    view_distance: i32
 }
 
 impl MCServerConnection {
@@ -103,6 +104,7 @@ impl MCServerConnection {
             player: Player::new(random()),
             last_tick: SystemTime::UNIX_EPOCH,
             waiting_for_confirm_teleport: None,
+            view_distance: 12,
         }
     }
 
@@ -198,15 +200,50 @@ impl MCServerConnection {
     fn handle_chunk_loading(&mut self) {
         // TODO: Handle position ig
         let mut chunk_to_load = vec![];
-        for x in -6..6 {
-            for z in -6..6 {
-                chunk_to_load.push(Position::new(x, 0, z));
+        let player_pos = self.player.block_pos();
+        let player_x = (player_pos.x() - (player_pos.x() < 0) as i32)/16;
+        let player_z = (player_pos.z() - (player_pos.z() < 0) as i32)/16;
+        for x in -self.view_distance..self.view_distance {
+            for z in -self.view_distance..self.view_distance {
+                chunk_to_load.push(Position::new(x + player_x, 0, z + player_z));
             }
         }
+
+        chunk_to_load.sort_by(|c1, c2| {
+            let x_diff1 = player_x.abs_diff(c1.x) as i32;
+            let z_diff1 = player_z.abs_diff(c1.z) as i32;
+
+            let x_diff2 = player_x.abs_diff(c2.x) as i32;
+            let z_diff2 = player_z.abs_diff(c2.z) as i32;
+
+            let length1 = x_diff1.max(z_diff1);
+            let length2 = x_diff2.max(z_diff2);
+
+            if length1 < length2 {
+                Ordering::Less
+            } else if length1 > length2 {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
+            }
+        });
+
         for chunk in chunk_to_load {
             if !self.client_loaded_chunks.contains(&chunk) {
                 self.client_loaded_chunks.push(chunk);
                 self.sender.send(ServerMainThreadBound::RequestChunk(chunk)).unwrap();
+            }
+        }
+        // Keep track of chunks the client will unload
+        for i in (0..self.client_loaded_chunks.len()).rev() {
+            let chunkpos = self.client_loaded_chunks.get(i).unwrap();
+            let x_diff = player_x.abs_diff(chunkpos.x) as i32;
+            let z_diff = player_z.abs_diff(chunkpos.z) as i32;
+            let length = x_diff.max(z_diff);
+            // Cube of size view_distance * 2 + 7
+            if length > self.view_distance + 3 {
+                // Safe since we start from the end
+                self.client_loaded_chunks.remove(i);
             }
         }
     }
@@ -270,7 +307,7 @@ impl MCServerConnection {
 
     fn play_mode_initialize_client(&mut self) {
         // Sends all required packets for clients to connect that don't get sent on different signals
-        self.send_packet(PlayPacketClientBound::login(self.player.eid, false, vec!["minecraft:overworld".to_string(), "minecraft:the_end".to_string(), "minecraft:the_nether".to_string()], 20, 10));
+        self.send_packet(PlayPacketClientBound::login(self.player.eid, false, vec!["minecraft:overworld".to_string(), "minecraft:the_end".to_string(), "minecraft:the_nether".to_string()], 20, self.view_distance));
         self.send_packet(PlayPacketClientBound::change_difficulty(1));
         self.send_packet(PlayPacketClientBound::commands(CommandNode::commands()));
         self.send_packet(PlayPacketClientBound::player_abilities());
@@ -278,6 +315,18 @@ impl MCServerConnection {
         //self.send_packet(PlayPacketClientBound::set_recipes());
         self.send_packet(PlayPacketClientBound::entity_event(self.player.eid, 24));
         self.send_packet(PlayPacketClientBound::entity_effect(self.player.eid, 15, 1, 0x7F, 0x07));
+    }
+
+    fn set_pos(&mut self, x: f64, y: f64, z: f64) {
+        let mut old_blockpos = self.player.block_pos();
+        self.player.set_pos(x, y, z);
+        let mut new_blockpos = self.player.block_pos();
+        old_blockpos.set_y(0);
+        new_blockpos.set_y(0);
+        if old_blockpos.x()/16 != new_blockpos.x()/16 || old_blockpos.z()/16 != new_blockpos.z()/16 {
+            self.send_packet(PlayPacketClientBound::set_center_chunk(new_blockpos))
+        }
+        //self.handle_chunk_loading();
     }
 
     fn handle_packet(&mut self, packet: Vec<u8>) -> Result<(), ServerError> {
@@ -396,7 +445,8 @@ impl MCServerConnection {
                 }
                 Ok(())
             }
-            ConfigurationPacketType::ClientInformation { .. } => {
+            ConfigurationPacketType::ClientInformation { view_distance, .. } => {
+                self.view_distance = view_distance.min(12) as i32;
                 let packet = PacketBuilder::new()
                     .set_id(ConfigurationPacketResponse::ClientBoundKnownPacks)
                     .add_varint(1)
@@ -443,7 +493,9 @@ impl MCServerConnection {
                 let block_state = command[6..].parse::<i32>().unwrap();
                 self.send_packet(PlayPacketClientBound::block_update(block_state, self.player.block_pos()));
             }
-            PlayPacketServerBound::ClientInformation { .. } => {}
+            PlayPacketServerBound::ClientInformation { view_distance, .. } => {
+                self.view_distance = view_distance.min(12) as i32;
+            }
             PlayPacketServerBound::ChatMessage { message, timestamp, salt, .. } => {
                 info!("[CHAT] <{}>: {}", self.pretty_identifier, message);
                 let _= self.sender.send(ServerMainThreadBound::ChatMessage { player_name: self.pretty_identifier.clone(), message, timestamp, salt });
@@ -451,7 +503,7 @@ impl MCServerConnection {
             PlayPacketServerBound::CloseContainer( .. ) => {}
             PlayPacketServerBound::DebugSampleSubscription{ .. } => {}
             PlayPacketServerBound::SetPlayerPosition { x, y, z, on_ground } => {
-                self.player.set_pos(x, y, z);
+                self.set_pos(x, y, z);
                 self.player.set_on_ground(on_ground);
                 if self.waiting_for_confirm_teleport.is_none() {
                     self.confirm_teleport();
@@ -459,7 +511,7 @@ impl MCServerConnection {
                 trace!("pos: {x} / {y} / {z}, on_ground: {on_ground}")
             }
             PlayPacketServerBound::SetPlayerPositionAndRotation { x, y, z, yaw, pitch, on_ground } => {
-                self.player.set_pos(x, y, z);
+                self.set_pos(x, y, z);
                 self.player.set_yaw_pitch(yaw, pitch);
                 self.player.set_on_ground(on_ground);
                 if self.waiting_for_confirm_teleport.is_none() {
