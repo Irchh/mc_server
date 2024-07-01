@@ -1,3 +1,5 @@
+use std::io;
+use std::path::StripPrefixError;
 use std::string::FromUtf8Error;
 use thiserror::Error;
 use crate::server_connection::ConnectionStatusType;
@@ -10,6 +12,10 @@ pub enum ServerError {
     McaParseError(#[from] mc_world_parser::McaParseError),
     #[error("{0}")]
     FromUtf8Error(#[from] FromUtf8Error),
+    #[error("{0}")]
+    IOError(#[from] io::Error),
+    #[error("{0}")]
+    StripPrefixError(#[from] StripPrefixError),
     #[error("Parsed VarInt too big")]
     VarIntTooBig,
     #[error("Integer too big to be converted to a VarInt {0}")]

@@ -1,11 +1,13 @@
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::io;
 use std::path::Path;
 use std::str::FromStr;
-use log::debug;
+use log::{debug, error, trace};
 use serde_json::Value;
 use walkdir::WalkDir;
 use crate::block_registry::BlockRegistry;
+use crate::error::ServerError;
 use crate::server_util::{RegistryEntry, TagEntry, TagEntryData};
 
 pub struct ResourceManager {
@@ -15,33 +17,41 @@ pub struct ResourceManager {
 }
 
 impl ResourceManager {
-    pub fn new<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        // TODO: Refactor for error resilience
-        //let root_dir = std::fs::read_dir(path)?;
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, ServerError> {
         let mut registries = BTreeMap::new();
-        let registries_dir = WalkDir::new(path.as_ref().join("registries"));
-        for entry in registries_dir.into_iter().filter_map(|e| e.ok()) {
-            let full_entry_name = entry.path().strip_prefix(path.as_ref().join("registries")).unwrap();
-            debug!("Entry path: {}", full_entry_name.display());
-            let mut name_iter = full_entry_name.iter();
-            let next = name_iter.next();
-            if next.is_none() {
-                continue;
-            }
-            let namespace = next.unwrap().to_str().unwrap().to_string();
-            if namespace.len() == 0 {
-                continue;
-            }
-            let id = full_entry_name.strip_prefix(namespace.clone()).unwrap().as_os_str().to_str().unwrap().to_string();
-            if !id.ends_with(".json") {
-                continue;
-            }
 
-            let file_data = std::fs::read_to_string(entry.path()).unwrap();
-            let json = Value::from_str(&*file_data).unwrap();
-            let entries = Self::json_to_registry_entries(json);
+        let excluded_dirs = vec!["minecraft/tags", "minecraft/datapacks", "minecraft/loot_table", "minecraft/recipe", "minecraft/advancement"];
 
-            registries.insert(namespace + ":" + id.strip_suffix(".json").unwrap(), entries);
+        let registries_dir = WalkDir::new(path.as_ref().join("generated/data"));
+        'outer: for entry in registries_dir.into_iter().filter_map(|e| e.ok()).filter(|e| e.path().extension().eq(&Some(&*OsString::from("json")))) {
+            let full_entry_name = entry.path().strip_prefix(path.as_ref().join("generated/data"))?;
+            for dir in &excluded_dirs {
+                if full_entry_name.starts_with(dir) {
+                    continue 'outer;
+                }
+            }
+            debug!("Registry entry path: {}", full_entry_name.display());
+            let mut name_iterator = full_entry_name.iter();
+            let namespace = name_iterator.next().unwrap().to_str().unwrap();
+            let registry_name_parts = name_iterator.clone().take(name_iterator.clone().collect::<Vec<_>>().len()-1).map(|s| s.to_str().unwrap()).collect::<Vec<_>>();
+            let mut registry_name = "".to_string();
+            for (i, part) in registry_name_parts.iter().enumerate() {
+                registry_name += part;
+                if i != registry_name_parts.len() - 1 {
+                    registry_name += "/";
+                }
+            }
+            let identifier = name_iterator.as_path().file_stem().unwrap().to_str().unwrap();
+
+            trace!("[{}] {}:{}", registry_name, namespace, identifier);
+            if !registries.contains_key(&registry_name) {
+                registries.insert(registry_name.clone(), vec![]);
+            }
+            let registry = registries.get_mut(&registry_name).unwrap();
+            registry.push(RegistryEntry {
+                id: namespace.to_string() + ":" + identifier,
+                data: None,
+            })
         }
 
         let file_data = std::fs::read_to_string("resources/tags/minecraft/tags.json").unwrap();
@@ -50,7 +60,7 @@ impl ResourceManager {
 
         Ok(Self {
             registries,
-            block_registry: BlockRegistry::load("resources/blocks.json")?,
+            block_registry: BlockRegistry::load(path.as_ref().join("generated/reports/blocks.json"))?,
             tags,
         })
     }
@@ -65,21 +75,6 @@ impl ResourceManager {
 
     pub fn tags_ref(&self) -> &Vec<TagEntry> {
         &self.tags
-    }
-
-    fn json_to_registry_entries(json: Value) -> Vec<RegistryEntry> {
-        let mut entries = vec![];
-        let map = json.get("entries").unwrap().as_array().unwrap();
-        for val in map {
-            let id = val.get("id").unwrap();
-            let namespace = id.get("namespace").unwrap().as_str().unwrap();
-            let name = id.get("name").unwrap().as_str().unwrap();
-            entries.push(RegistryEntry {
-                id: namespace.to_string() + ":" + name,
-                data: None,
-            });
-        }
-        entries
     }
 
     fn json_to_tags(json: Value) -> Vec<TagEntry> {
