@@ -209,6 +209,7 @@ impl MCServerConnection {
             }
         }
 
+        // Sort by distance to player
         chunk_to_load.sort_by(|c1, c2| {
             let x_diff1 = player_x.abs_diff(c1.x) as i32;
             let z_diff1 = player_z.abs_diff(c1.z) as i32;

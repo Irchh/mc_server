@@ -20,6 +20,7 @@ impl ResourceManager {
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, ServerError> {
         let mut registries = BTreeMap::new();
 
+        // TODO: Check which directories should be included instead
         let excluded_dirs = vec!["minecraft/tags", "minecraft/datapacks", "minecraft/loot_table", "minecraft/recipe", "minecraft/advancement"];
 
         let registries_dir = WalkDir::new(path.as_ref().join("generated/data"));
