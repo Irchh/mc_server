@@ -46,9 +46,9 @@ impl MCServer {
                     let ch_to_thread = std::sync::mpsc::channel();
                     let ch_from_thread = std::sync::mpsc::channel();
                     let server_info = self.server_info.clone();
-                    let block_reg = self.resource_manager.block_registry_ref().clone();
+                    let resource_manager = self.resource_manager.clone();
                     threads.push(thread::spawn(|| {
-                        MCServerConnection::new(connection, ch_from_thread.0, ch_to_thread.1, server_info, block_reg).run()
+                        MCServerConnection::new(connection, ch_from_thread.0, ch_to_thread.1, server_info, resource_manager).run()
                     }));
                     channels.push((ch_to_thread.0, ch_from_thread.1));
                 }
@@ -75,18 +75,6 @@ impl MCServer {
                 match rec.try_recv() {
                     Ok(request) => {
                         match request {
-                            ServerMainThreadBound::RequestRegistryInfo => {
-                                for (id, entries) in self.resource_manager.registries_ref() {
-                                    let _ = send.send(ServerConnectionThreadBound::RegistryInfo {
-                                        registry_id: id.clone(),
-                                        entries: entries.clone(),
-                                    });
-                                }
-                                let _ = send.send(ServerConnectionThreadBound::RegistryInfoFinished);
-                            }
-                            ServerMainThreadBound::RequestTagInfo => {
-                                let _ = send.send(ServerConnectionThreadBound::TagInfo(self.resource_manager.tags_ref().clone()));
-                            }
                             ServerMainThreadBound::RequestChunk(pos) => {
                                 let _ = send.send(ServerConnectionThreadBound::ChunkData(self.world.get_chunk(pos)));
                             }

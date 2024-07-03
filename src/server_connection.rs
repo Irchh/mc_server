@@ -1,4 +1,5 @@
 use std::cmp::{Ordering, PartialEq};
+use std::collections::BTreeMap;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::sync::mpsc::{Receiver, Sender, TryRecvError};
@@ -13,7 +14,8 @@ use crate::command::CommandNode;
 use crate::error::ServerError;
 use crate::packet::{ConfigurationPacketResponse, ConfigurationPacketType, HandshakePacketType, LoginPacketResponse, LoginPacketType, PlayPacketClientBound, PlayPacketServerBound, StatusPacketType};
 use crate::packet_builder::PacketBuilder;
-use crate::server_util::{ServerInfo, ServerConnectionThreadBound, ServerMainThreadBound};
+use crate::resource_manager::ResourceManager;
+use crate::server_util::{ServerInfo, ServerConnectionThreadBound, ServerMainThreadBound, RegistryEntry};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionStatusType {
@@ -80,16 +82,16 @@ pub struct MCServerConnection {
     receiver: Receiver<ServerConnectionThreadBound>,
     server_info: ServerInfo,
     packet_buffer: Vec<u8>,
-    block_registry: BlockRegistry,
     client_loaded_chunks: Vec<Position>,
     player: Player,
     last_tick: SystemTime,
     waiting_for_confirm_teleport: Option<i32>,
-    view_distance: i32
+    view_distance: i32,
+    resource_manager: ResourceManager,
 }
 
 impl MCServerConnection {
-    pub fn new(connection: TcpStream, sender: Sender<ServerMainThreadBound>, receiver: Receiver<ServerConnectionThreadBound>, server_info: ServerInfo, block_registry: BlockRegistry) -> Self {
+    pub fn new(connection: TcpStream, sender: Sender<ServerMainThreadBound>, receiver: Receiver<ServerConnectionThreadBound>, server_info: ServerInfo, resource_manager: ResourceManager) -> Self {
         connection.set_nonblocking(true).unwrap();
         Self {
             pretty_identifier: connection.peer_addr().map(|a| {a.to_string()}).unwrap_or("UNKNOWN".to_string()),
@@ -99,12 +101,12 @@ impl MCServerConnection {
             receiver,
             server_info,
             packet_buffer: vec![],
-            block_registry,
             client_loaded_chunks: vec![],
             player: Player::new(random()),
             last_tick: SystemTime::UNIX_EPOCH,
             waiting_for_confirm_teleport: None,
             view_distance: 12,
+            resource_manager,
         }
     }
 
@@ -162,24 +164,9 @@ impl MCServerConnection {
             match self.receiver.try_recv() {
                 Ok(message) => {
                     match message {
-                        ServerConnectionThreadBound::RegistryInfo { registry_id, entries } => {
-                            self.send_packet(ConfigurationPacketResponse::registry_data(registry_id, entries));
-                        }
-                        ServerConnectionThreadBound::TagInfo(tags) => {
-                            self.send_packet(ConfigurationPacketResponse::update_tags(tags));
-                            self.sender.send(ServerMainThreadBound::RequestRegistryInfo).unwrap();
-                        }
-                        ServerConnectionThreadBound::RegistryInfoFinished => {
-                            // Next stage ig
-                            let packet = PacketBuilder::new()
-                                .set_id(ConfigurationPacketResponse::FinishConfiguration)
-                                .build()
-                                .unwrap();
-                            self.send_packet(packet);
-                        }
                         ServerConnectionThreadBound::ChunkData(chunk) => {
                             if let Some(chunk) = chunk {
-                                self.send_packet(PlayPacketClientBound::chunk_data(chunk, Box::new(self.block_registry.clone())));
+                                self.send_packet(PlayPacketClientBound::chunk_data(chunk, Box::new(self.resource_manager.block_registry_ref().clone())));
                             }
                         }
                         ServerConnectionThreadBound::ChatMessage { player_name, message, timestamp, salt } => {
@@ -474,7 +461,16 @@ impl MCServerConnection {
                 } else {
                     panic!("Client known packs empty");
                 }
-                self.sender.send(ServerMainThreadBound::RequestTagInfo).unwrap();
+                for (registry_id, entries) in self.resource_manager.registries_ref().clone() {
+                    self.send_packet(ConfigurationPacketResponse::registry_data(registry_id, entries));
+                }
+                self.send_packet(ConfigurationPacketResponse::update_tags(self.resource_manager.tags_ref().clone(), &self.resource_manager));
+                // Next stage ig
+                let packet = PacketBuilder::new()
+                    .set_id(ConfigurationPacketResponse::FinishConfiguration)
+                    .build()
+                    .unwrap();
+                self.send_packet(packet);
                 Ok(())
             }
         }

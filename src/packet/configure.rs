@@ -1,7 +1,10 @@
-use log::error;
+use std::collections::BTreeMap;
+use log::{debug, error};
+use crate::block_registry::BlockRegistry;
 use crate::error::ServerError;
 use crate::packet::*;
 use crate::packet_builder::PacketBuilder;
+use crate::resource_manager::ResourceManager;
 use crate::server_util::{RegistryEntry, TagEntry};
 
 #[derive(Debug)]
@@ -63,19 +66,38 @@ impl ConfigurationPacketResponse {
         packet.build().unwrap()
     }
 
-    pub fn update_tags(tags: Vec<TagEntry>) -> Vec<u8> {
+    pub fn update_tags(tags: Vec<TagEntry>, resource_manager: &ResourceManager) -> Vec<u8> {
         let mut packet = PacketBuilder::new()
             .set_id(Self::UpdateTags)
             .add_varint(tags.len() as i32);
 
         for tag in tags {
-            packet = packet.add_string(tag.id)
+            packet = packet.add_string(tag.id.clone())
                 .add_varint(tag.data.len() as i32);
             for tag_array in tag.data {
                 packet = packet.add_string(tag_array.tag_name)
                     .add_varint(tag_array.entries.len() as i32);
                 for entry in tag_array.entries {
-                    packet = packet.add_varint(entry);
+                    if tag.id.eq("minecraft:block") {
+                        if let Some(entry_id) = resource_manager.block_registry_ref().get_default_blockstate_of_block(entry.clone()) {
+                            packet = packet.add_varint(entry_id);
+                        } else {
+                            error!("Error getting id of {} from {}", entry, tag.id);
+                        }
+                    } else {
+                        if let Some(registry) = resource_manager.registries_ref().get(&tag.id) {
+                            for (id, reg_entry) in registry.iter().enumerate() {
+                                if reg_entry.id.eq(&entry) {
+                                    packet = packet.add_varint(id as i32);
+                                    break;
+                                }
+                            }
+                        } else {
+                            error!("NO REGISTRY CALLED {}. Error getting id of {} from {}", tag.id, entry, tag.id);
+                            //debug!("registries: {:?}", registries);
+                            panic!();
+                        }
+                    }
                 }
             }
         }

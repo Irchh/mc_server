@@ -40,7 +40,7 @@ pub struct RegistryEntry {
 
 #[derive(Debug, Clone)]
 pub struct TagEntryData {
-    pub entries: Vec<i32>,
+    pub entries: Vec<String>,
     pub tag_name: String, // Identifier
 }
 
@@ -51,16 +51,11 @@ pub struct TagEntry {
 }
 
 pub enum ServerMainThreadBound {
-    RequestRegistryInfo,
-    RequestTagInfo,
     RequestChunk(Position),
     ChatMessage { player_name: String, message: String, timestamp: i64, salt: i64, },
 }
 
 pub enum ServerConnectionThreadBound {
-    RegistryInfo { registry_id: String, entries: Vec<RegistryEntry> },
-    RegistryInfoFinished,
-    TagInfo(Vec<TagEntry>),
     ChunkData(Option<Chunk>),
     ChatMessage { player_name: String, message: String, timestamp: i64, salt: i64, },
 }

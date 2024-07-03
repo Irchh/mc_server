@@ -60,4 +60,17 @@ impl BlockRegistry {
         }
         None
     }
+
+    pub fn get_default_blockstate_of_block(&self, block: String) -> Option<i32> {
+        for (name, states) in &self.blocks {
+            if block.eq(name) {
+                for state in &states.states {
+                    if state.default {
+                        return Some(state.id);
+                    }
+                }
+            }
+        }
+        None
+    }
 }
